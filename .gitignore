@@ -1,3 +1,9 @@
+etc/conf.cfg
+bin/session_file.session
+
+debug
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

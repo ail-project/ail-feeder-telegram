@@ -1,0 +1,10 @@
+[AIL]
+url = https://127.0.0.1:7000
+apikey = <YOURAPIKEY>
+verifycert = False
+ail_feeder = True
+
+[TELEGRAM]
+api_id = <api_id>
+api_hash = <api_hash>
+session_name = session_file
