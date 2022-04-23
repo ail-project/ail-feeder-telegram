@@ -73,7 +73,7 @@ def unpack_chat(chat_obj):
     dict_chat['title'] = chat_obj.title
 
     if chat_type == Chat or chat_type == Channel:
-        dict_chat['version'] = chat_obj.version
+        #dict_chat['version'] = chat_obj.version
         dict_chat['date'] = unpack_datetime(chat_obj.date)
         if chat_obj.participants_count is not None:
             dict_chat['nb_participants'] = chat_obj.participants_count
