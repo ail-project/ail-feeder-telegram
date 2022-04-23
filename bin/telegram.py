@@ -181,7 +181,7 @@ async def leave_public_channel(client, channel_name):
 
 # add parameters
 # offset_date (datetime)
-async def get_all_channel_messages(client, channel_id, pyail, min_id=0, max_id=0):
+async def get_all_channel_messages(client, channel_id, pyail, min_id=0, max_id=0, feeder_uuid=0):
     # DEBUG:
     #print(channel_id)
 
@@ -254,7 +254,7 @@ async def get_all_channel_messages(client, channel_id, pyail, min_id=0, max_id=0
         #     print()
         ## -- ##
 
-        #pyail.feed_json_item(data, dict_meta, 'ail_feeder_telegram', feeder_uuid)
+        pyail.feed_json_item(data, dict_meta, 'ail_feeder_telegram', feeder_uuid)
 
         ## DEBUG ##
         #print(type(message))
