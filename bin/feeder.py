@@ -64,6 +64,9 @@ if __name__ == '__main__':
     parser.add_argument('--leave', help='Leave a Channel', type=str, dest='channel_to_leave', default=None)
     parser.add_argument('--checkId', help='Check if an invite ID is valid', type=str, dest='check_id', default=None)
 
+    parser.add_argument('--channels', help='List all channels joined', action='store_true')
+    parser.add_argument('--getall', help='Get all message from all joined channels', action='store_true')
+
     #parser.add_argument('-v', '--verbose', help='Verbose output', action="store_true", default=False)
 
     args = parser.parse_args()
@@ -72,7 +75,7 @@ if __name__ == '__main__':
     #    sys.exit(0)
 
     # # TODO: ADD Channel monitoring
-    if not args.entity and not args.channel_to_join and not args.channel_to_leave and not args.check_id:
+    if not args.entity and not args.channel_to_join and not args.channel_to_leave and not args.check_id and not args.channels and not args.getall:
         parser.print_help()
         sys.exit(0)
 
@@ -91,6 +94,8 @@ if __name__ == '__main__':
     channel_to_join = args.channel_to_join
     channel_to_leave = args.channel_to_leave
     check_id = args.check_id
+    get_channels = args.channels
+    get_all_messages = args.getall
     #join_hash_id = args.join_hash_id
     ##-- CHANNEL --##
 
@@ -110,9 +115,21 @@ if __name__ == '__main__':
             client.loop.run_until_complete(telegram.validate_join_code(client, check_id))
         #if join_hash_id:
         #    client.loop.run_until_complete(telegram.join_private_channel(client, join_hash_id))
-
+        if args.channels is True:
+            channels_joined = client.loop.run_until_complete(telegram.get_current_channels(client))
+            print(channels_joined)
+        if args.getall is True:
+            channels_joined = client.loop.run_until_complete(telegram.get_current_channels(client))
+            print(channels_joined)
+            i = 0
+            while i < len(channels_joined):
+                print(channels_joined[i])
+                entity = channels_joined[i]
+                client.loop.run_until_complete(get_entity_messages(client, entity, min_id=min_id, max_id=max_id))
+                i = i + 1
         if entity:
             client.loop.run_until_complete(get_entity_messages(client, entity, min_id=min_id, max_id=max_id))
+
 
         #res = client.loop.run_until_complete( telegram.get_channel_all_users(client, entity) )
         #print(res)
