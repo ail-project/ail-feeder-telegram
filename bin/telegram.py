@@ -25,7 +25,7 @@ async def get_current_channels(client):
     all_channels_id = []
     async for dialog_obj in client.iter_dialogs():
         if not dialog_obj.is_user:
-            channel_id = int(dialog_obj.id)
+            channel_id = dialog_obj.id
             # negative: is a group, positive: single person
             all_channels_id.append(channel_id)
     return all_channels_id
