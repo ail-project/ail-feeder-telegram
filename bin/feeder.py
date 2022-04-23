@@ -42,7 +42,7 @@ else:
 
 async def get_entity_messages(client, entity, min_id=0, max_id=0):
     try:
-        await telegram.get_all_channel_messages(client, entity, pyail, min_id=min_id, max_id=max_id)
+        await telegram.get_all_channel_messages(client, entity, pyail, min_id=min_id, max_id=max_id, feeder_uuid=feeder_uuid)
     except ValueError as e:
         print(f'Error: {e}')
         sys.exit(0)
