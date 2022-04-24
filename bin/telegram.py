@@ -254,15 +254,22 @@ async def get_all_channel_messages(client, channel_id, pyail, min_id=0, max_id=0
         #     print()
         ## -- ##
 
-        pyail.feed_json_item(data, dict_meta, 'ail_feeder_telegram', feeder_uuid)
+        if pyail:
+            try:
+                pyail.feed_json_item(data, dict_meta, 'ail_feeder_telegram', feeder_uuid)
+                print('[SUCCESS]')
+            except Exception as e:
+                print('[ERROR]')
+        print('[INFO] Telegram Chat Log: {} Message ID: {} Message: {} \n'.format(dict_meta['date'],dict_meta['message_id'],data))
+
 
         ## DEBUG ##
         #print(type(message))
         #print(json.dumps(dict_mess, indent=2, sort_keys=True))
         #print(message)
-        print(data)
-        print(dict_meta)
-        print()
+        #print(data)
+        #print(dict_meta)
+        #print()
         ## -- ##
 
 ### BEGIN - MESSAGE ENTITY ###
