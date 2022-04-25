@@ -25,7 +25,7 @@ async def get_current_channels(client):
     all_channels_id = []
     async for dialog_obj in client.iter_dialogs():
         if not dialog_obj.is_user:
-            channel_id = int(dialog_obj.id)
+            channel_id = dialog_obj.id
             # negative: is a group, positive: single person
             all_channels_id.append(channel_id)
     return all_channels_id
@@ -73,7 +73,6 @@ def unpack_chat(chat_obj):
     dict_chat['title'] = chat_obj.title
 
     if chat_type == Chat or chat_type == Channel:
-        dict_chat['version'] = chat_obj.version
         dict_chat['date'] = unpack_datetime(chat_obj.date)
         if chat_obj.participants_count is not None:
             dict_chat['nb_participants'] = chat_obj.participants_count
@@ -182,7 +181,7 @@ async def leave_public_channel(client, channel_name):
 
 # add parameters
 # offset_date (datetime)
-async def get_all_channel_messages(client, channel_id, pyail, min_id=0, max_id=0):
+async def get_all_channel_messages(client, channel_id, pyail, min_id=0, max_id=0, feeder_uuid=0):
     # DEBUG:
     #print(channel_id)
 
@@ -255,15 +254,22 @@ async def get_all_channel_messages(client, channel_id, pyail, min_id=0, max_id=0
         #     print()
         ## -- ##
 
-        #pyail.feed_json_item(data, dict_meta, 'ail_feeder_telegram', feeder_uuid)
+        if pyail:
+            try:
+                pyail.feed_json_item(data, dict_meta, 'ail_feeder_telegram', feeder_uuid)
+                print('[SUCCESS]')
+            except Exception as e:
+                print('[ERROR]')
+        print('[INFO] Telegram Chat Log: {} Message ID: {} Message: {} \n'.format(dict_meta['date'],dict_meta['message_id'],data))
+
 
         ## DEBUG ##
         #print(type(message))
         #print(json.dumps(dict_mess, indent=2, sort_keys=True))
         #print(message)
-        print(data)
-        print(dict_meta)
-        print()
+        #print(data)
+        #print(dict_meta)
+        #print()
         ## -- ##
 
 ### BEGIN - MESSAGE ENTITY ###
