@@ -31,15 +31,22 @@ You can use this API ID and hash with any phone number or even for bot accounts
 ## Usage
 
 feeder.py
-* --entity [Channel or User ID] (_Get all messages from an entity: channel or User id_)
-* --min [int] (_message min id_)
-* --max [int] (_message max id_)
-* --join [Channel ID] (_Join a public Channel_)
-* --leave [Channel ID] (_Leave a Channel_)
-* --checkId [Invite ID] (_Check if an invite ID is valid_)
-* --channels (_List all joined channel IDs_)
-* --getall (_Get all messages from all joined channel IDs_)
-* --verbose (_Not yet implemented_)
+* --chats ( List all joined chats_ )
+* join ( _Join a chat by its name or invite hash_ )
+  * --name [Chat name] ( _chat name/username_ )
+  * --invite [Invite Hash] ( _chat invite hash_ )
+* leave [Channel] ( _Leave a Chat_ )
+* check [Invite Hash] ( _Check an invite hash/chat without joining_ )
+* messages ( _Get all messages from a chat_ )
+  * --replies ( _Get replies_ )
+  * --mark_as_read ( _Mark messages as read_ )
+  * --download_medias ( _Download medias_ TODO: size limit + save_dir )
+* monitor ( _Monitor all joined chats_ )
+* unread ( _Get all unread messages from all chats and mark them as read_ )
+* chat [Chat ID/name] (  _Get a chat metadata, list of users/admins, ..._ )
+  * --users ( _Get a list of all the users of a chat_ )
+  * --admins ( _Get a list of all the admin users of a chat_ )
+* entity [Entity ID/name] ( _Get chat or user metadata_ )
 
 ## Joining Channels
 ```bash

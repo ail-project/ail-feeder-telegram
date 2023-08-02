@@ -117,7 +117,7 @@ if __name__ == '__main__':
     get_chat_users_parser = subparsers.add_parser('chat', help='Get a chat metadata, list of users, ...')
     get_chat_users_parser.add_argument('chat_id', help='ID, hash or username of the chat')
     get_chat_users_parser.add_argument('--users', action='store_true', help='Get a list of all the users of a chat')
-    get_chat_users_parser.add_argument('--admin', action='store_true', help='Get a list of all the admin users of a chat')
+    get_chat_users_parser.add_argument('--admins', action='store_true', help='Get a list of all the admin users of a chat')
     # join ? leave ? shortcut
 
     get_metas_parser = subparsers.add_parser('entity', help='Get chat or user metadata')
@@ -193,8 +193,8 @@ if __name__ == '__main__':
             loop.run_until_complete(tg.get_unread_message(download=download, replies=replies))
         elif args.command == 'chat':
             chat = args.chat_id
-            if args.users or args.admin:
-                if args.admin:
+            if args.users or args.admins:
+                if args.admins:
                     admin = True
                 else:
                     admin = False
