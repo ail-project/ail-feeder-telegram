@@ -2,7 +2,7 @@ etc/conf.cfg
 bin/session_file.session
 
 debug
-
+.idea
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
