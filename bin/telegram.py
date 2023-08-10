@@ -8,6 +8,8 @@ import logging
 from datetime import datetime
 
 from telethon import TelegramClient, events
+# from telethon import helpers
+
 from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelRequest
 
 from telethon.tl.types import Channel, User, ChannelParticipantsAdmins, PeerUser, PeerChat, PeerChannel
@@ -21,6 +23,7 @@ from telethon.tl.functions.users import GetFullUserRequest  # https://tl.teletho
 # from telethon.tl.functions.channels import GetFullChannelRequest  # channel='username'
 # https://tl.telethon.dev/methods/channels/get_full_channel.html
 from telethon.tl.functions.messages import CheckChatInviteRequest, ImportChatInviteRequest
+from telethon.tl.types import MessageEntityTextUrl, MessageEntityMentionName
 
 # errors
 from telethon.errors.rpcerrorlist import ChatAdminRequiredError  # UserNotParticipantError
@@ -304,14 +307,36 @@ class TGFeeder:
         elif isinstance(sender, User):
             return self._unpack_user(sender)
 
+    # https://github.com/LonamiWebs/Telethon/blob/v1/telethon/extensions/markdown.py#L12
+    def unpack_message_entities(self, message):
+        # text = helpers.add_surrogate(message.raw_text)
+        text = ''
+        for ent, txt in message.get_entities_text():
+            if isinstance(ent, MessageEntityTextUrl):
+                text = text + f'\n[{txt}]({ent.url})'
+            elif isinstance(ent, MessageEntityMentionName):
+                text = text + f'\n[{txt}](tg://user?id={ent.user_id})'
+        #         offset = ent.offset
+        #         if offset > 0:
+        #             offset = offset - 1
+        #         length = ent.length
+        #         print(ent)
+        #         print(txt.encode())
+        #         print(helpers.del_surrogate(text[offset:offset + length]))
+        # text = helpers.del_surrogate(text)
+        return text
+
     async def get_media(self, message, download=False):  # TODO save dir + size limit
         # file: photo + document (audio + gif + sticker + video + video_note + voice)
         meta = {}
+
         file = message.file
         if file:
             name = file.name
-            if name:
+            if name: ####
                 meta['name'] = name
+            elif message.photo:
+                meta['name'] = 'photo'
             ext = file.ext
             if ext:
                 meta['ext'] = ext
@@ -328,6 +353,8 @@ class TGFeeder:
             if download:
                 path = await message.download_media(file='downloads')  # file=bytes to save in memory
                 # print(path)
+
+            # print(meta)
 
         # message.geo
         # message.media
@@ -406,6 +433,11 @@ class TGFeeder:
             # reply_to.reply_to_top_id ?
             meta['reply_to'] = message.reply_to.reply_to_msg_id
 
+        if message.entities:
+            mess_entities = self.unpack_message_entities(message)
+            if mess_entities:
+                mess['data'] = mess['data'] + '\n' + mess_entities
+
         if message.reactions:
             meta['reactions'] = []
             # print(message.reactions.can_see_list)  # TO check
@@ -432,6 +464,11 @@ class TGFeeder:
             media = await self.get_media(message, download=download)
             if media:
                 meta['media'] = media
+                # if not download: # TODO option ???
+                #     media_mess = f"\n[File: {media.get('name', '')} {media.get('size', '')} B]"
+                #     if media.get('mime_type'):
+                #         media_mess += f" - {media.get('mime_type', '')}"
+                #     mess['data'] = media_mess
 
         # mark as read
         if mark_read:
@@ -476,10 +513,11 @@ class TGFeeder:
             await self._process_message(event.message)
 
 def unpack_datetime(datetime_obj):
-    date_dict = {'datestamp': datetime.strftime(datetime_obj, '%Y-%m-%d'),
-                 'timestamp': datetime.strftime(datetime_obj, '%H:%M:%S'),
+    date_dict = {'datestamp': datetime.strftime(datetime_obj, '%Y-%m-%d %H:%M:%S'),
+                 'timestamp': datetime_obj.timestamp(),
                  'timezone': datetime.strftime(datetime_obj, '%Z')}
     return date_dict
+
 
 def sanityze_message_id(mess_id):
     try:
@@ -532,6 +570,9 @@ async def monitor_chats(client):
 
 # TODO SAVE JSON OPTION
 
+# TODO JOIN via file list
+# TODO Try to export joined chats
+
 # if __name__ == '__main__':
 #     tg = TGFeeder(telegram_api_id, telegram_api_hash, telegram_session_name)
 #     tg.connect()
@@ -540,6 +581,4 @@ async def monitor_chats(client):
 #     # print(loop.run_until_complete(tg.client.get_me()))
 #
 #     # tg.client.run_until_disconnected()
-
-
-
+# TODO + AIL if plus == invite
