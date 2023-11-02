@@ -3,14 +3,16 @@
 
 import json
 import logging
-# import sys
+import sys
 
 from datetime import datetime
+
+from libretranslatepy import LibreTranslateAPI
 
 from telethon import TelegramClient, events
 # from telethon import helpers
 
-from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelRequest
+from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelRequest, GetForumTopicsRequest
 
 from telethon.tl.types import Channel, User, ChannelParticipantsAdmins, PeerUser, PeerChat, PeerChannel
 # from telethon.tl.types import MessageEntityUrl, MessageEntityTextUrl, MessageEntityMention
@@ -56,6 +58,10 @@ class TGFeeder:
         else:
             self.ail = False
 
+        self.lt = LibreTranslateAPI("http://localhost:5000")
+
+        self.subchannels = {}
+
     def _get_default_dict(self):
         return {'meta': {}, 'source': self.source, 'source-uuid': self.source_uuid}
 
@@ -69,6 +75,14 @@ class TGFeeder:
         self.client.start()
         if not self.client.is_connected():
             self.logger.warning('Connection error')
+
+    def translate(self, text):
+        # get text language
+        translation = ''
+        lang = lt.detect(text)[0]
+        if lang['confidence'] >= 50:
+            translation = lt.translate(text, source=lang['language'], target='en')
+        return translation
 
     async def get_chats(self, meta=True):  # TODO improve metas
         channels = []
@@ -119,7 +133,11 @@ class TGFeeder:
         # join a public chat/channel
         # channel are a special form of chat
         if chat:
-            # chat = await self.client.get_entity(chat) # get_input_entity()
+            try:
+                chat = int(chat)
+            except (TypeError, ValueError):
+                pass
+            chat = await self.client.get_entity(chat) # TODO
             try:
                 updates = await self.client(JoinChannelRequest(chat))
                 # print(updates)
@@ -234,6 +252,24 @@ class TGFeeder:
 
     async def get_chat_admins(self, chat):
         return await self.get_chat_users(chat, admin=True)
+
+    def _unpack_forun_topic(self, topic):
+        meta = {'id': topic.id, 'date': unpack_datetime(topic.date), 'name': topic.title}
+        # TODO from_id
+        return meta
+
+    async def get_chats_topics(self, chat):
+        try:
+            chat = int(chat)
+        except (TypeError, ValueError):
+            pass
+        # chat = await self.client.get_entity(chat)
+        topics = await self.client(GetForumTopicsRequest(channel=chat, offset_date=None, offset_id=0, offset_topic=0, limit=0))
+        chat_topic = []
+        for topic in topics.topics:
+            chat_topic.append(self._unpack_forun_topic(topic))
+        return chat_topic
+
 
     # TODO metas
     # photo
@@ -418,20 +454,61 @@ class TGFeeder:
         # message.peer_id The peer to which this message was sent
         # message.from_id The peer who sent this message. None for anonymous message
 
+        if message.reply_to:
+            # reply_to.reply_to_peer_id ?
+            # reply_to.reply_to_top_id ?
+            meta['reply_to'] = message.reply_to.reply_to_msg_id
+
         chat = await message.get_chat()
         if chat:
             meta['chat'] = self._unpack_get_chat(chat)
             if p_username:
                 meta['chat']['username'] = p_username
 
+            # TODO -> refresh subchannels list on watch -> get new channels creation
+            if chat.forum:
+                if not self.subchannels:
+                    self.subchannels = await self.get_chats_topics(chat.id)
+
+                meta['chat']['subchannels'] = self.subchannels  # TODO rename to sub-channel ????
+                # print(json.dumps(meta['chat']['subchannels']))
+
+                print()
+                print(message)
+                print()
+
+                # TODO USE subchannel_IDS DICT
+                # General topic, ID = 1
+                if 'reply_to' not in meta:
+                    for subchannel in self.subchannels:
+                        if subchannel['id'] == 1:
+                            meta['chat']['subchannel'] = subchannel
+                            break
+                elif not message.reply_to.forum_topic:
+                    for subchannel in self.subchannels:
+                        if subchannel['id'] == 1:
+                            meta['chat']['subchannel'] = subchannel
+                            break
+                elif message.reply_to.reply_to_top_id:
+                    for subchannel in self.subchannels:
+                        if subchannel['id'] == message.reply_to.reply_to_top_id:
+                            meta['chat']['subchannel'] = subchannel
+                            break
+                else:
+                    for subchannel in self.subchannels:
+                        if subchannel['id'] == meta['reply_to']:
+                            meta['chat']['subchannel'] = subchannel
+                            del meta['reply_to']
+                            break
+                # DEBUG
+                # if 'subchannel' in meta['chat']:
+                #     print('subchannel FOUND:        ', meta['chat']['subchannel'])
+                # else:
+                #     sys.exit(0)
+
         sender = await message.get_sender()
         if sender:
             meta['sender'] = self._unpack_sender(sender)
-
-        if message.reply_to:
-            # reply_to.reply_to_peer_id ?
-            # reply_to.reply_to_top_id ?
-            meta['reply_to'] = message.reply_to.reply_to_msg_id
 
         if message.entities:
             mess_entities = self.unpack_message_entities(message)
@@ -491,6 +568,9 @@ class TGFeeder:
         messages = []
         # min_id = 1
         # max_id = 5
+        # min_id = 171177
+        # max_id = 171179
+        # download = True
         chat = await self.get_entity(chat, r_id=True)
         async for message in self.client.iter_messages(chat, min_id=min_id, max_id=max_id, filter=None, limit=limit):
             # print(message)
@@ -573,12 +653,6 @@ async def monitor_chats(client):
 # TODO JOIN via file list
 # TODO Try to export joined chats
 
-# if __name__ == '__main__':
-#     tg = TGFeeder(telegram_api_id, telegram_api_hash, telegram_session_name)
-#     tg.connect()
-#     loop = tg.client.loop
-#     loop.run_until_complete(main(tg))
-#     # print(loop.run_until_complete(tg.client.get_me()))
-#
-#     # tg.client.run_until_disconnected()
 # TODO + AIL if plus == invite
+
+# if __name__ == '__main__':
