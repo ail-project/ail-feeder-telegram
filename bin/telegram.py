@@ -4,6 +4,7 @@
 import json
 import logging
 import sys
+import time
 
 from datetime import datetime
 
@@ -17,12 +18,12 @@ from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelReque
 from telethon.tl.types import Channel, User, ChannelParticipantsAdmins, PeerUser, PeerChat, PeerChannel
 # from telethon.tl.types import MessageEntityUrl, MessageEntityTextUrl, MessageEntityMention
 from telethon.tl.types import ReactionEmoji, ReactionCustomEmoji
-from telethon.tl.types import Chat  # ChatEmpty
+from telethon.tl.types import Chat, ChatFull, ChannelFull  # ChatEmpty
 from telethon.tl.types import ChatInvite, ChatInviteAlready, ChatInvitePeek
 from telethon.tl.functions.users import GetFullUserRequest  # https://tl.telethon.dev/constructors/users/user_full.html
-# from telethon.tl.functions.messages import GetFullChatRequest  # chat_id=-00000000
+from telethon.tl.functions.messages import GetFullChatRequest  # chat_id=-00000000
 # https://tl.telethon.dev/methods/messages/get_full_chat.html
-# from telethon.tl.functions.channels import GetFullChannelRequest  # channel='username'
+from telethon.tl.functions.channels import GetFullChannelRequest  # channel='username'
 # https://tl.telethon.dev/methods/channels/get_full_channel.html
 from telethon.tl.functions.messages import CheckChatInviteRequest, ImportChatInviteRequest
 from telethon.tl.types import MessageEntityTextUrl, MessageEntityMentionName
@@ -34,6 +35,9 @@ from telethon.errors import ChannelsTooMuchError, ChannelInvalidError, ChannelPr
 from telethon.errors import ChannelPublicGroupNaError, UserCreatorError, UserNotParticipantError, InviteHashEmptyError
 from telethon.errors import UsersTooMuchError, UserAlreadyParticipantError, SessionPasswordNeededError
 # from telethon.errors.common import MultiError
+
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
 class TGFeeder:
 
@@ -62,6 +66,10 @@ class TGFeeder:
 
         self.subchannels = {}
 
+        self.chats = {}
+        self.users = {}  # TODO ADD ID USER IF DOWNLOADED IMAGE
+        # TODO END CLEANUP
+
     def _get_default_dict(self):
         return {'meta': {}, 'source': self.source, 'source-uuid': self.source_uuid}
 
@@ -88,19 +96,19 @@ class TGFeeder:
         channels = []
         async for dialog_obj in self.client.iter_dialogs():
             # remove self chats
-            if not dialog_obj.is_user:
-                channel_id = dialog_obj.id
+            # if not dialog_obj.is_user:
+            channel_id = dialog_obj.id
                 # negative: is a group, positive: single person # TODO check chat id padding
-                if meta:
-                    channels.append(await self.get_entity(channel_id))
-                else:
-                    channels.append(channel_id)
+            if meta:
+                channels.append(await self.get_entity(channel_id))
+            else:
+                channels.append(channel_id)
         return channels
 
     def _unpack_invite(self, invite):
         meta = {}
         if isinstance(invite, ChatInvite):
-            meta['title'] = invite.title
+            meta['name'] = invite.title
             # meta['photo'] = invite.photo
             meta['participants'] = invite.participants_count
             # flags: channel, broadcast, public, megagroup, request_needed
@@ -203,12 +211,17 @@ class TGFeeder:
             self.logger.warning(f'You are not a member of this channel: {chat}')
 
     async def get_user(self, user):
+        return {}
+        print(self.users)
         full = await self.client(GetFullUserRequest(id=user))
-        meta_full = self._unpack_user_full(full.full_user)
-        meta = self._unpack_user(full.users[0])  # TODO handle all mentioned users, chats
-        if 'about' in meta_full:
-            meta['about'] = meta_full['about']
-        # print(meta)
+        print(full)
+        user = full.full_user
+        meta = {'id': user.id}
+        if user.about:
+            meta['about'] = user.about
+        # common_chats_count
+        # common_chats_count
+        print(user.profile_photo)
         return meta
 
     # Note: entity ID: only work if is in a dialog or in the same chat, client.get_participants(group) need to be called
@@ -240,7 +253,6 @@ class TGFeeder:
             async for user in self.client.iter_participants(chat, filter=user_filter):
                 user_meta = self._unpack_user(user)
                 users.append(user_meta)
-                # print(user_meta)
         except ChatAdminRequiredError:
             self.logger.error(f'{chat.id}: Chat admin privileges required')
         # except MultiError as e:
@@ -253,7 +265,7 @@ class TGFeeder:
     async def get_chat_admins(self, chat):
         return await self.get_chat_users(chat, admin=True)
 
-    def _unpack_forun_topic(self, topic):
+    def _unpack_forum_topic(self, topic):
         meta = {'id': topic.id, 'date': unpack_datetime(topic.date), 'name': topic.title}
         # TODO from_id
         return meta
@@ -265,21 +277,104 @@ class TGFeeder:
             pass
         # chat = await self.client.get_entity(chat)
         topics = await self.client(GetForumTopicsRequest(channel=chat, offset_date=None, offset_id=0, offset_topic=0, limit=0))
-        chat_topic = []
+        chat_topic = {}
         for topic in topics.topics:
-            chat_topic.append(self._unpack_forun_topic(topic))
+            chat_topic[topic.id] = self._unpack_forum_topic(topic)
         return chat_topic
+
+    async def _get_profile_photo(self, photo):
+        pass
+
+    def _unpack_bot_command(self, bot_commands):
+        commands = []
+        for command in bot_commands:
+            commands.append({'command': command.command, 'description': command.description})
+        return commands
+
+    def _get_bot_info(self, bot_info):
+        meta = {}
+        if bot_info.user_id:
+            meta['id'] = bot_info.user_id
+        if bot_info.description:
+            meta['info'] = bot_info.description
+        if bot_info.commands:
+            meta['commands'] = self._unpack_bot_command(bot_info.commands)
+        return meta
+
+    async def get_chat_full(self, chat, photo=False): # TODO HANDLE WEIRD ID -> CHANNEL REPLIES IDS
+        meta = {'id': chat.id}
+        if isinstance(chat, Channel):
+            full = await self.client(GetFullChannelRequest(chat))
+        elif isinstance(chat, Chat):
+            full = await self.client(GetFullChatRequest(chat.id))
+        else:
+            return
+
+        full_chat = full.full_chat
+        chats = full.chats
+        users = full.users
+
+        # print(chats)
+        # print(users)
+
+        # Unpack FULL Chat
+        meta['info'] = full_chat.about
+
+        if isinstance(full_chat, ChannelFull):
+            meta['stats'] = {}
+            if full_chat.participants_count:
+                meta['stats']['participants'] = full_chat.participants_count
+            if full_chat.admins_count:
+                meta['stats']['admins'] = full_chat.admins_count
+            if full_chat.banned_count:
+                meta['stats']['banned'] = full_chat.banned_count
+            if full_chat.online_count:
+                meta['stats']['online'] = full_chat.online_count
+
+            # TODO
+            # print(full_chat.location)
+            # print(full_chat.stories)
+            # print('linked', full_chat.linked_chat_id)
+
+        else:
+            pass
+            # print(full_chat.participants)
+            # chat_photo optionnal
+
+
+        # bot info
+        if full_chat.bot_info:
+            meta['bots'] = []
+            for bot in full_chat.bot_info:
+                meta['bots'].append(self._get_bot_info(bot))
+
+            # participants
+            # chat_photo
+            # bot_info
+            # pinned_msg_id
+
+            # users => bots
+
+        return meta
 
 
     # TODO metas
     # photo
     # channel type
     def _unpack_channel(self, channel):
-        meta = {'id': channel.id, 'title': channel.title, 'date': unpack_datetime(channel.date), 'type': 'channel'} # TODO add broadcast, supergroup type
+        if channel.id in self.chats:
+            meta = self.chats[channel.id]
+        else:
+            meta = {}
+        meta['id'] = channel.id
+        meta['name'] = channel.title
+        meta['date'] = unpack_datetime(channel.date)
+        meta['type'] = 'channel'  # TODO add broadcast, supergroup type ???
         if channel.username:
             meta['username'] = channel.username.lower()
         if channel.access_hash:
             meta['access_hash'] = channel.access_hash
+
         return meta
 
     # TODO metas
@@ -287,15 +382,26 @@ class TGFeeder:
     # version
     # migrated to
     def _unpack_chat(self, chat):
-        meta = {'id': chat.id, 'title': chat.title, 'date': unpack_datetime(chat.date), 'type': 'chat',
-                'participants': chat.participants_count}
+        if chat.id in self.chats:
+            meta = self.chats[chat.id]
+        else:
+            meta = {}
+        meta['id'] = chat.id
+        meta['name'] = chat.title
+        meta['date'] = unpack_datetime(chat.date)
+        meta['type'] = 'chat'
+        meta['participants'] = 'participants_count'
         return meta
 
     # TODO metas
     # photo
     def _unpack_user(self, user):
-        # print(user)
-        meta = {'id': user.id, 'type': 'user'}
+        if user.id in self.users:
+            meta = self.users[user.id]
+        else:
+            meta = {}
+        meta['id'] = user.id
+        meta['type'] = 'user'
         if user.username:
             meta['username'] = user.username.lower()
         if user.first_name:
@@ -306,13 +412,6 @@ class TGFeeder:
             meta['phone'] = user.phone
         if user.access_hash:
             meta['access_hash'] = user.access_hash
-        return meta
-
-    # TODO photo + bot_info
-    def _unpack_user_full(self, userfull):
-        meta = {'id': userfull.id, 'type': 'user'}
-        if userfull.about:
-            meta['about'] = userfull.about
         return meta
 
     # TODO Chat/Channel/User Photo
@@ -337,10 +436,14 @@ class TGFeeder:
             meta['type'] = 'user'
         return meta
 
-    def _unpack_sender(self, sender):
+    async def unpack_sender(self, sender):
         if isinstance(sender, Channel):
+            if sender.id not in self.chats:
+                self.chats[sender.id] = await self.get_chat_full(sender)
             return self._unpack_channel(sender)
         elif isinstance(sender, User):
+            if sender.id not in self.users:
+                self.users[sender.id] = await self.get_user(sender.id)
             return self._unpack_user(sender)
 
     # https://github.com/LonamiWebs/Telethon/blob/v1/telethon/extensions/markdown.py#L12
@@ -459,56 +562,56 @@ class TGFeeder:
             # reply_to.reply_to_top_id ?
             meta['reply_to'] = message.reply_to.reply_to_msg_id
 
-        chat = await message.get_chat()
+        chat = await message.get_chat() # TODO HANDLE USER CHAT ################################################################
         if chat:
+            if chat.id not in self.chats and not isinstance(chat, User):
+                self.chats[chat.id] = await self.get_chat_full(chat)
+
             meta['chat'] = self._unpack_get_chat(chat)
+
             if p_username:
                 meta['chat']['username'] = p_username
 
-            # TODO -> refresh subchannels list on watch -> get new channels creation
-            if chat.forum:
-                if not self.subchannels:
-                    self.subchannels = await self.get_chats_topics(chat.id)
+            if isinstance(chat, Channel):
+                # TODO -> refresh subchannels list on watch -> get new channels creation
+                if chat.forum:
+                    if chat.id not in self.subchannels:
+                        self.subchannels[chat.id] = await self.get_chats_topics(chat.id)
 
-                meta['chat']['subchannels'] = self.subchannels  # TODO rename to sub-channel ????
-                # print(json.dumps(meta['chat']['subchannels']))
+                    meta['chat']['subchannels'] = list(self.subchannels[chat.id].values())
+                    # print(json.dumps(meta['chat']['subchannels']))
 
-                print()
-                print(message)
-                print()
-
-                # TODO USE subchannel_IDS DICT
-                # General topic, ID = 1
-                if 'reply_to' not in meta:
-                    for subchannel in self.subchannels:
-                        if subchannel['id'] == 1:
-                            meta['chat']['subchannel'] = subchannel
-                            break
-                elif not message.reply_to.forum_topic:
-                    for subchannel in self.subchannels:
-                        if subchannel['id'] == 1:
-                            meta['chat']['subchannel'] = subchannel
-                            break
-                elif message.reply_to.reply_to_top_id:
-                    for subchannel in self.subchannels:
-                        if subchannel['id'] == message.reply_to.reply_to_top_id:
-                            meta['chat']['subchannel'] = subchannel
-                            break
-                else:
-                    for subchannel in self.subchannels:
-                        if subchannel['id'] == meta['reply_to']:
-                            meta['chat']['subchannel'] = subchannel
+                    # TODO USE subchannel_IDS DICT
+                    # General topic, ID = 1
+                    if 'reply_to' not in meta:
+                        # if 1 in self.subchannels[chat.id]: # TODO raise Exception
+                        meta['chat']['subchannel'] = self.subchannels[chat.id][1]
+                    elif not message.reply_to.forum_topic:
+                        # if 1 in self.subchannels[chat.id]:  # TODO raise Exception
+                        meta['chat']['subchannel'] = self.subchannels[chat.id][1]
+                    elif message.reply_to.reply_to_top_id:
+                        # if message.reply_to.reply_to_top_id in self.subchannels[chat.id]:
+                        meta['chat']['subchannel'] = self.subchannels[chat.id][message.reply_to.reply_to_top_id]
+                    else:
+                        if meta['reply_to'] in self.subchannels[chat.id]:
+                            meta['chat']['subchannel'] = self.subchannels[chat.id][meta['reply_to']]
                             del meta['reply_to']
-                            break
-                # DEBUG
-                # if 'subchannel' in meta['chat']:
-                #     print('subchannel FOUND:        ', meta['chat']['subchannel'])
-                # else:
-                #     sys.exit(0)
+                    if not meta['chat']['subchannel']:
+                        print(meta)
+                        sys.exit(0)  # TODO raise exception
 
         sender = await message.get_sender()
         if sender:
-            meta['sender'] = self._unpack_sender(sender)
+            meta['sender'] = await self.unpack_sender(sender)
+        else:
+            meta['sender'] = {'id': chat.id, 'type': 'chat'}
+            if meta['chat'].get('username'):
+                meta['sender']['username'] = meta['chat']['username']
+            if meta['chat'].get('name'):
+                meta['sender']['first_name'] = meta['chat']['name']
+
+            if not meta['sender'].get('username') and meta['chat'].get('name'):
+                meta['sender']['username'] = meta['chat']['name']
 
         if message.entities:
             mess_entities = self.unpack_message_entities(message)
@@ -555,7 +658,9 @@ class TGFeeder:
             self.ail.feed_json_item(mess['data'], mess['meta'], self.source, self.source_uuid)
         # else:
         #     print(json.dumps(mess, indent=4, sort_keys=True))
+        # print(mess)
         print(json.dumps(mess, indent=4, sort_keys=True))
+        # sys.exit(0)
 
     async def get_message_replies(self, chat, message_id, p_username=None):
         chat = await self.get_entity(chat, r_id=True)
