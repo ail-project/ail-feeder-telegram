@@ -31,7 +31,7 @@ You can use this API ID and hash with any phone number or even for bot accounts
 ## Usage
 
 feeder.py
-* --chats ( List all joined chats_ )
+* chats ( List all joined chats_ )
 * join ( _Join a chat by its name or invite hash_ )
   * --name [Chat name] ( _chat name/username_ )
   * --invite [Invite Hash] ( _chat invite hash_ )
