@@ -5,17 +5,20 @@ import argparse
 import configparser
 import json
 import sys
+import os
 
 from telegram import TGFeeder
 from pyail import PyAIL
 
+dir_path = os.path.dirname(os.path.realpath(__file__))
+pathConf = os.path.join(dir_path, '../etc/conf.cfg')
 
 # TODO logs
 
 # Check the configuration and do some preliminary structure checks
 try:
     config = configparser.ConfigParser()
-    config.read('../etc/conf.cfg')
+    config.read(pathConf)
 
     # Check AIL configuration, set variables and do the connection test to AIL API
     if 'AIL' not in config:
