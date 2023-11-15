@@ -44,7 +44,7 @@ class TGFeeder:
     # dialog vs chats ???
 
     # ail_url ail_key ail_verifycert ail_feeder + disabled option
-    def __init__(self, tg_api_id, tg_api_hash, session_name, ail_client=None):
+    def __init__(self, tg_api_id, tg_api_hash, session_name, ail_client=None): # TODO create downloads dir
         self.logger = logging.getLogger()  # TODO FORMAT LOGS
 
         self.source = 'ail_feeder_telegram'
@@ -60,7 +60,7 @@ class TGFeeder:
         if ail_client:
             self.ail = ail_client
         else:
-            self.ail = False
+            self.ail = None
 
         self.lt = LibreTranslateAPI("http://localhost:5000")
 
@@ -465,14 +465,12 @@ class TGFeeder:
         # text = helpers.del_surrogate(text)
         return text
 
-    async def get_media(self, message, download=False):  # TODO save dir + size limit
-        # file: photo + document (audio + gif + sticker + video + video_note + voice)
+    def _unpack_media_meta(self, message):
         meta = {}
-
         file = message.file
         if file:
             name = file.name
-            if name: ####
+            if name:  ####
                 meta['name'] = name
             elif message.photo:
                 meta['name'] = 'photo'
@@ -489,9 +487,25 @@ class TGFeeder:
             # message.document.file_reference ?
             # message.photo.file_reference ?
 
-            if download:
-                path = await message.download_media(file='downloads')  # file=bytes to save in memory
-                # print(path)
+        return meta
+
+    async def get_media(self, obj_json, message, download=False):  # TODO save dir + size limit
+        # file: photo + document (audio + gif + sticker + video + video_note + voice)
+
+        if message.file and obj_json['meta']['media'].get('mime_type', 'Nonemime')[:5] == 'image':
+            if download:  # TODO LIMIT FILE SIZE
+                # path = await message.download_media(file='downloads')  # file=bytes to save in memory
+                media_content = await message.download_media(file=bytes)
+                if media_content:
+                    # # TODO CHECK IF EMPTY MESS DATA ????
+                    obj_media_meta = dict(obj_json)
+                    # obj_media_meta['type'] = 'image'
+                    obj_media_meta['meta']['type'] = 'image'
+
+                    # obj_media_meta['data'] = media_content  # TODO ##################################################
+                    if self.ail:
+                        self.ail.feed_json_item(media_content, obj_media_meta['meta'], self.source, self.source_uuid)
+                    print(json.dumps(obj_media_meta, indent=4, sort_keys=True))
 
             # print(meta)
 
@@ -513,7 +527,6 @@ class TGFeeder:
         # if message.photo:
         #     path = await message.download_media()
         #     print(path)
-        return meta
 
     # option: get_reply_message ????
     # message.geo
@@ -533,6 +546,7 @@ class TGFeeder:
         meta['date'] = unpack_datetime(message.date)
         if message.edit_date:
             meta['edit_date'] = unpack_datetime(message.edit_date)
+        print(message.views)
         if message.views:
             meta['views'] = message.views
         if message.forwards: # The number of times this message has been forwarded.
@@ -641,26 +655,23 @@ class TGFeeder:
                     await self.get_message_replies(chat, message.id, p_username=p_username)
 
         if message.media:
-            media = await self.get_media(message, download=download)
-            if media:
-                meta['media'] = media
-                # if not download: # TODO option ???
-                #     media_mess = f"\n[File: {media.get('name', '')} {media.get('size', '')} B]"
-                #     if media.get('mime_type'):
-                #         media_mess += f" - {media.get('mime_type', '')}"
-                #     mess['data'] = media_mess
+            meta['media'] = self._unpack_media_meta(message)
 
         # mark as read
         if mark_read:
             await message.mark_read()
 
-        if self.ail and mess['data']:  # TODO remove if media
+        if self.ail and mess['data']:
+            mess['meta']['type'] = 'message'
             self.ail.feed_json_item(mess['data'], mess['meta'], self.source, self.source_uuid)
-        # else:
-        #     print(json.dumps(mess, indent=4, sort_keys=True))
+
         # print(mess)
         print(json.dumps(mess, indent=4, sort_keys=True))
         # sys.exit(0)
+
+        # Download medias
+        if meta.get('media'):
+            await self.get_media(mess, message, download=download)
 
     async def get_message_replies(self, chat, message_id, p_username=None):
         chat = await self.get_entity(chat, r_id=True)
