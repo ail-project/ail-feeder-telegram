@@ -92,7 +92,7 @@ class TGFeeder:
             translation = lt.translate(text, source=lang['language'], target='en')
         return translation
 
-    async def get_chats(self, meta=True):  # TODO improve metas
+    async def get_chats(self, meta=True):
         channels = []
         async for dialog_obj in self.client.iter_dialogs():
             # remove self chats
@@ -100,7 +100,7 @@ class TGFeeder:
             channel_id = dialog_obj.id
                 # negative: is a group, positive: single person # TODO check chat id padding
             if meta:
-                channels.append(await self.get_entity(channel_id))
+                channels.append(self._unpack_get_chat(dialog_obj.entity))
             else:
                 channels.append(channel_id)
         return channels
