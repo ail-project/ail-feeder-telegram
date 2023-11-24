@@ -40,7 +40,7 @@ feeder.py
 * messages ( _Get all messages from a chat_ )
   * --replies ( _Get replies_ )
   * --mark_as_read ( _Mark messages as read_ )
-  * --download_medias ( _Download medias_ TODO: size limit + save_dir )
+  * --media ( _Download medias_ TODO: size limit + save_dir )
 * monitor ( _Monitor all joined chats_ )
 * unread ( _Get all unread messages from all chats and mark them as read_ )
 * chat [Chat ID/name] (  _Get a chat metadata, list of users/admins, ..._ )

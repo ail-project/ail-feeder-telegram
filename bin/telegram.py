@@ -5,6 +5,7 @@ import json
 import logging
 import sys
 import time
+import base64
 
 from datetime import datetime
 
@@ -319,6 +320,9 @@ class TGFeeder:
 
         # Unpack FULL Chat
         meta['info'] = full_chat.about
+
+        if full_chat.chat_photo:
+            meta['icon'] = base64.standard_b64encode(await self.client.download_profile_photo(chat, file=bytes)).decode()
 
         if isinstance(full_chat, ChannelFull):
             meta['stats'] = {}

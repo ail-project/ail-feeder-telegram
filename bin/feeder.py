@@ -78,7 +78,7 @@ except FileNotFoundError:
 
 def _create_messages_subparser(subparser):
     subparser.add_argument('--replies', action='store_true', help='Get replies')
-    subparser.add_argument('--download_medias', action='store_true', help='Download medias')
+    subparser.add_argument('--media', action='store_true', help='Download medias')
     subparser.add_argument('--size_limit', type=int, help='Size limit for downloading medias')
     subparser.add_argument('--save_dir', help='Directory to save downloaded medias')
     subparser.add_argument('--mark_as_read', action='store_true', help='Mark messages as read')
@@ -179,7 +179,7 @@ if __name__ == '__main__':
                 mark_read = True
             else:
                 mark_read = False
-            if args.download_medias:
+            if args.media:
                 download = True
             else:
                 download = False
@@ -189,7 +189,7 @@ if __name__ == '__main__':
                 replies = True
             else:
                 replies = False
-            if args.download_medias:
+            if args.media:
                 download = True
             else:
                 download = False
