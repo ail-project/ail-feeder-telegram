@@ -212,17 +212,17 @@ class TGFeeder:
             self.logger.warning(f'You are not a member of this channel: {chat}')
 
     async def get_user(self, user):
-        return {}
-        print(self.users)
+        # return {}
         full = await self.client(GetFullUserRequest(id=user))
-        print(full)
-        user = full.full_user
-        meta = {'id': user.id}
-        if user.about:
-            meta['about'] = user.about
+        # print(full)
+        user_f = full.full_user
+        meta = {'id': user_f.id}
+        if user_f.about:
+            meta['about'] = user_f.about
         # common_chats_count
-        # common_chats_count
-        print(user.profile_photo)
+        if user_f.profile_photo:
+            meta['icon'] = base64.standard_b64encode(await self.client.download_profile_photo(user, file=bytes)).decode()
+        # print(user.profile_photo)
         return meta
 
     # Note: entity ID: only work if is in a dialog or in the same chat, client.get_participants(group) need to be called
