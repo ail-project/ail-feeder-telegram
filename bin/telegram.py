@@ -322,7 +322,9 @@ class TGFeeder:
         meta['info'] = full_chat.about
 
         if full_chat.chat_photo:
-            meta['icon'] = base64.standard_b64encode(await self.client.download_profile_photo(chat, file=bytes)).decode()
+            icon = await self.client.download_profile_photo(chat, file=bytes)
+            if icon:
+                meta['icon'] = base64.standard_b64encode(icon).decode()
 
         if isinstance(full_chat, ChannelFull):
             meta['stats'] = {}
@@ -473,11 +475,13 @@ class TGFeeder:
         meta = {}
         file = message.file
         if file:
+            print(file)
+            print(file.name)
             name = file.name
             if name:  ####
                 meta['name'] = name
-            elif message.photo:
-                meta['name'] = 'photo'
+            else:
+                meta['name'] = ''
             ext = file.ext
             if ext:
                 meta['ext'] = ext
@@ -509,7 +513,13 @@ class TGFeeder:
                     # obj_media_meta['data'] = media_content  # TODO ##################################################
                     if self.ail:
                         self.ail.feed_json_item(media_content, obj_media_meta['meta'], self.source, self.source_uuid)
-                    print(json.dumps(obj_media_meta, indent=4, sort_keys=True))
+                    # print(json.dumps(obj_media_meta, indent=4, sort_keys=True))
+
+        elif obj_json['meta']['media'].get('name') and self.ail:
+            print('----------------------------------------------------------------------------')
+            obj_json['meta']['type'] = 'message'
+            self.ail.feed_json_item('', obj_json['meta'], self.source, self.source_uuid)
+            print(json.dumps(obj_json, indent=4, sort_keys=True))
 
             # print(meta)
 
@@ -670,11 +680,18 @@ class TGFeeder:
             self.ail.feed_json_item(mess['data'], mess['meta'], self.source, self.source_uuid)
 
         # print(mess)
-        print(json.dumps(mess, indent=4, sort_keys=True))
+        # print(json.dumps(mess, indent=4, sort_keys=True))
         # sys.exit(0)
 
         # Download medias
         if meta.get('media'):
+            # if meta['media']['name']:
+            #     print(meta['media'])
+            #     if meta['media']['mime_type'].startswith('image'):
+            #         print(meta['media'])
+            #         sys.exit(0)
+
+            # TODO Multiple medias ??????
             await self.get_media(mess, message, download=download)
 
     async def get_message_replies(self, chat, message_id, p_username=None):
