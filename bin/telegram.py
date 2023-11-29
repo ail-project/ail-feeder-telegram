@@ -544,8 +544,8 @@ class TGFeeder:
 
     # option: get_reply_message ????
     # message.geo
-    async def _process_message(self, message, download=False, replies=True, mark_read=False, p_username=None):
-        # print(message)
+    async def _process_message(self, message, download=False, replies=True, mark_read=False, chat_meta={}, parent_message_id=None):
+        print(message)
         if not message:
             return {}
         # post
@@ -587,52 +587,72 @@ class TGFeeder:
 
         if message.reply_to:
             # reply_to.reply_to_peer_id ?
-            # reply_to.reply_to_top_id ?
-            meta['reply_to'] = message.reply_to.reply_to_msg_id
 
-        chat = await message.get_chat() # TODO HANDLE USER CHAT ################################################################
-        if chat:
-            if chat.id not in self.chats and not isinstance(chat, User):
-                self.chats[chat.id] = await self.get_chat_full(chat)
+            reply_meta = {}
+            # THREAD
+            if replies and chat_meta:
+                meta['thread'] = {}
+                # reply_to_msg_id set to thread ID if not a reply.
+                if message.reply_to.reply_to_top_id:
+                    # meta['thread']['id'] = message.reply_to.reply_to_top_id
+                    meta['thread']['id'] = parent_message_id
+                    reply_meta['message_id'] = message.reply_to.reply_to_msg_id
+                else:
+                    # meta['thread']['id'] = message.reply_to.reply_to_msg_id
+                    meta['thread']['id'] = parent_message_id
+                meta['thread']['parent'] = {}
+                meta['thread']['parent']['chat'] = chat_meta['id']
+                if chat_meta.get('subchannel'):
+                    meta['thread']['parent']['subchannel'] = chat_meta['subchannel']['id']
+                meta['thread']['parent']['message'] = meta['thread']['id']
+            else:
+                reply_meta['message_id'] = message.reply_to.reply_to_msg_id
+            meta['reply_to'] = reply_meta
 
-            meta['chat'] = self._unpack_get_chat(chat)
+        # Message comment original chat
+        if chat_meta:
+            meta['chat'] = chat_meta
+        else:
+            chat = await message.get_chat() # TODO HANDLE USER CHAT ################################################################
+            if chat:
+                if chat.id not in self.chats and not isinstance(chat, User):
+                    self.chats[chat.id] = await self.get_chat_full(chat)
 
-            if p_username:
-                meta['chat']['username'] = p_username
+                meta['chat'] = self._unpack_get_chat(chat)
 
-            if isinstance(chat, Channel):
-                # TODO -> refresh subchannels list on watch -> get new channels creation
-                if chat.forum:
-                    if chat.id not in self.subchannels:
-                        self.subchannels[chat.id] = await self.get_chats_topics(chat.id)
+                if isinstance(chat, Channel):
+                    # TODO -> refresh subchannels list on watch -> get new channels creation
+                    if chat.forum:
+                        if chat.id not in self.subchannels:
+                            self.subchannels[chat.id] = await self.get_chats_topics(chat.id)
 
-                    meta['chat']['subchannels'] = list(self.subchannels[chat.id].values())
-                    # print(json.dumps(meta['chat']['subchannels']))
+                        meta['chat']['subchannels'] = list(self.subchannels[chat.id].values())
+                        # print(json.dumps(meta['chat']['subchannels']))
 
-                    # TODO USE subchannel_IDS DICT
-                    # General topic, ID = 1
-                    if 'reply_to' not in meta:
-                        # if 1 in self.subchannels[chat.id]: # TODO raise Exception
-                        meta['chat']['subchannel'] = self.subchannels[chat.id][1]
-                    elif not message.reply_to.forum_topic:
-                        # if 1 in self.subchannels[chat.id]:  # TODO raise Exception
-                        meta['chat']['subchannel'] = self.subchannels[chat.id][1]
-                    elif message.reply_to.reply_to_top_id:
-                        # if message.reply_to.reply_to_top_id in self.subchannels[chat.id]:
-                        meta['chat']['subchannel'] = self.subchannels[chat.id][message.reply_to.reply_to_top_id]
-                    else:
-                        if meta['reply_to'] in self.subchannels[chat.id]:
-                            meta['chat']['subchannel'] = self.subchannels[chat.id][meta['reply_to']]
-                            del meta['reply_to']
-                    if not meta['chat']['subchannel']:
-                        print(meta)
-                        sys.exit(0)  # TODO raise exception
+                        # TODO USE subchannel_IDS DICT
+                        # General topic, ID = 1
+                        if 'reply_to' not in meta:
+                            # if 1 in self.subchannels[chat.id]: # TODO raise Exception
+                            meta['chat']['subchannel'] = self.subchannels[chat.id][1]
+                        elif not message.reply_to.forum_topic:
+                            # if 1 in self.subchannels[chat.id]:  # TODO raise Exception
+                            meta['chat']['subchannel'] = self.subchannels[chat.id][1]
+                        elif message.reply_to.reply_to_top_id:
+                            # if message.reply_to.reply_to_top_id in self.subchannels[chat.id]:
+                            meta['chat']['subchannel'] = self.subchannels[chat.id][message.reply_to.reply_to_top_id]
+                        else:
+                            if meta['reply_to']['message_id'] in self.subchannels[chat.id]:
+                                meta['chat']['subchannel'] = self.subchannels[chat.id][meta['reply_to']['message_id']]
+                                del meta['reply_to']
+                        if not meta['chat']['subchannel']:
+                            print(meta)
+                            sys.exit(0)  # TODO raise exception
 
         sender = await message.get_sender()
         if sender:
             meta['sender'] = await self.unpack_sender(sender)
         else:
-            meta['sender'] = {'id': chat.id, 'type': 'chat'}
+            meta['sender'] = {'id': message.chat.id, 'type': 'chat'}
             if meta['chat'].get('username'):
                 meta['sender']['username'] = meta['chat']['username']
             if meta['chat'].get('name'):
@@ -657,16 +677,6 @@ class TGFeeder:
                 elif isinstance(reaction, ReactionCustomEmoji):  # Fetch custom emoji ???
                     reaction = reaction.document_id
                 meta['reactions'].append({'reaction': reaction, 'count': reaction_count.count})
-
-        if message.replies:
-            if message.replies.replies > 0:
-                meta['replies'] = message.replies.replies
-                if replies:
-                    p_username = None
-                    if meta.get('chat'):
-                        if meta['chat'].get('username'):
-                            p_username = meta['chat']['username']
-                    await self.get_message_replies(chat, message.id, p_username=p_username)
 
         if message.media:
             meta['media'] = self._unpack_media_meta(message)
@@ -694,12 +704,17 @@ class TGFeeder:
             # TODO Multiple medias ??????
             await self.get_media(mess, message, download=download)
 
-    async def get_message_replies(self, chat, message_id, p_username=None):
-        chat = await self.get_entity(chat, r_id=True)
+        # Downloads comments
+        if message.replies and replies:
+            if message.replies.replies > 0:
+                await self.get_message_replies(message.chat, message.id, meta['chat'])
+
+    async def get_message_replies(self, chat, message_id, chat_meta):
+        # chat = await self.get_entity(chat, r_id=True)
         async for message in self.client.iter_messages(chat, reply_to=message_id):
             # print(message)
             # print()
-            await self._process_message(message, p_username=p_username)
+            await self._process_message(message, chat_meta=chat_meta, parent_message_id=message_id)
 
     async def get_chat_messages(self, chat, download=False, replies=False, min_id=0, max_id=0, limit=None, mark_read=False):
         messages = []
