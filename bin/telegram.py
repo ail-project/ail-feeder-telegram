@@ -37,8 +37,8 @@ from telethon.errors import ChannelPublicGroupNaError, UserCreatorError, UserNot
 from telethon.errors import UsersTooMuchError, UserAlreadyParticipantError, SessionPasswordNeededError
 # from telethon.errors.common import MultiError
 
-import logging
-logging.basicConfig(level=logging.DEBUG)
+# import logging
+# logging.basicConfig(level=logging.DEBUG)
 
 class TGFeeder:
 
@@ -213,17 +213,21 @@ class TGFeeder:
 
     async def get_user(self, user):
         # return {}
-        full = await self.client(GetFullUserRequest(id=user))
-        # print(full)
-        user_f = full.full_user
-        meta = {'id': user_f.id}
-        if user_f.about:
-            meta['about'] = user_f.about
-        # common_chats_count
-        if user_f.profile_photo:
-            meta['icon'] = base64.standard_b64encode(await self.client.download_profile_photo(user, file=bytes)).decode()
-        # print(user.profile_photo)
-        return meta
+        try:
+            full = await self.client(GetFullUserRequest(id=user))
+            # print(full)
+            user_f = full.full_user
+            meta = {'id': user_f.id}
+            if user_f.about:
+                meta['info'] = user_f.about
+            # common_chats_count
+            if user_f.profile_photo:
+                meta['icon'] = base64.standard_b64encode(await self.client.download_profile_photo(user, file=bytes)).decode()
+            # print(user.profile_photo)
+            return meta
+        except ValueError as e:
+            print(e)
+            return {}
 
     # Note: entity ID: only work if is in a dialog or in the same chat, client.get_participants(group) need to be called
     #       -
@@ -652,7 +656,8 @@ class TGFeeder:
         if sender:
             meta['sender'] = await self.unpack_sender(sender)
         else:
-            meta['sender'] = {'id': message.chat.id, 'type': 'chat'}
+            message_chat_id = meta['chat']['id']
+            meta['sender'] = {'id': message_chat_id, 'type': 'chat'}
             if meta['chat'].get('username'):
                 meta['sender']['username'] = meta['chat']['username']
             if meta['chat'].get('name'):
@@ -660,6 +665,11 @@ class TGFeeder:
 
             if not meta['sender'].get('username') and meta['chat'].get('name'):
                 meta['sender']['username'] = meta['chat']['name']
+
+            if 'icon' in self.chats[message_chat_id]:
+                meta['sender']['icon'] = self.chats[message_chat_id]['icon']
+            if 'info' in self.chats[message_chat_id]:
+                meta['sender']['info'] = self.chats[message_chat_id]['info']
 
         if message.entities:
             mess_entities = self.unpack_message_entities(message)
@@ -736,6 +746,13 @@ class TGFeeder:
                 if nb_unread:
                     await self.get_chat_messages(dialog.entity, download=download, replies=replies, limit=nb_unread, mark_read=True)
 
+    async def _process_deleted_message(self, chat_id, l_message_id):
+        chat = self.get_entity(chat_id)
+        print(chat)
+        for message_id in l_message_id:
+            print(message_id)
+        print()
+
     # TODO filter chats
     async def monitor_chats(self):
         # subscribe to NewMessage event
@@ -743,6 +760,21 @@ class TGFeeder:
         async def new_message_handler(event):
             # filter event
             await self._process_message(event.message)
+
+        @self.client.on(events.MessageDeleted)
+        async def new_message_deleted(event):
+            print(event)
+            await self._process_deleted_message(event.chat_id, event.deleted_ids)
+
+            # Log all deleted message IDs
+            for msg_id in event.deleted_ids:
+                print('Message', msg_id, 'was deleted in', event.chat_id)
+                # Message 208882 was deleted in -1001228309110
+
+        @self.client.on(events.MessageEdited)
+        async def new_message_edited(event):
+            # TODO same as a new message
+            print('Message', event.id, 'changed at', event.date)
 
 def unpack_datetime(datetime_obj):
     date_dict = {'datestamp': datetime.strftime(datetime_obj, '%Y-%m-%d %H:%M:%S'),
