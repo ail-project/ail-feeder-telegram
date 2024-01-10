@@ -1,6 +1,12 @@
 # ail-feeder-telegram
 External telegram feeder for AIL framework (with an automated user account)
 
+- [x] Forum channels
+- [x] Replies Threads
+- [x] Images Download
+- [x] Users + channels meta and profile picture
+- [x] Files download (Saved on disk)
+
 ## Install
 
 - Install python3 dependencies:
@@ -50,32 +56,35 @@ feeder.py
 
 ## Joining Channels
 ```bash
-python3 bin/feeder.py --join CHANNEL_NAME 
+python3 bin/feeder.py join -n CHANNEL_USERNAME 
+```
+```bash
+python3 bin/feeder.py join -i INVITE_HASH 
 ```
 Channels can also be joined from the mobile application on Apple or Android.
 Once the script is re-run, the newly joined channel will be added to the messages queue.
 
 ## Leaving Channels
 ```bash
-python3 bin/feeder.py --leave CHANNEL_NAME 
+python3 bin/feeder.py leave CHANNEL_USERNAME/CHANNEL_ID 
 ```
 Channels can also be left from the mobile application on Apple or Android.
 If you leave a channel whilst the script is running there will likely be an exception error.
 
-## Get Joined Channels
+## Get all Channels
 ```bash
-python3 bin/feeder.py --channels 
+python3 bin/feeder.py chats 
 ```
 Running this action will export a python list of channel IDs your Telegram account has joined.
-There is not a whole lot of useful information in this list, however you can pass this list on to
-another account to join the same accounts.
 
-If you join too many channels, too quickly, you will experience a waiting period before you can join any more.
+If you join too many channels, too quickly, you might experience a waiting period before you can join a new one.
 
-## Get ALL Messages from ALL Joined Channels
+## Get Channel Messages
 ```bash
-python3 bin/feeder.py --getall 
+python3 bin/feeder.py CHANNEL_USERNAME/CHANNEL_ID
 ```
-If you run in this action, and you have joined a lot of active channels
-this will result in AIL-Framework's API being bombarded by lots of message outputs.
-If you do this, be prepared for your system to max out it's CPU and RAM resources.
+
+## MONITOR Messages from all Joined Channels
+```bash
+python3 bin/feeder.py monitor
+```
