@@ -81,7 +81,7 @@ If you join too many channels, too quickly, you might experience a waiting perio
 
 ## Get Channel Messages
 ```bash
-python3 bin/feeder.py CHANNEL_USERNAME/CHANNEL_ID
+python3 bin/feeder.py messages CHANNEL_USERNAME/CHANNEL_ID
 ```
 
 ## MONITOR Messages from all Joined Channels
