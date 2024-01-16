@@ -3,6 +3,7 @@
 
 import json
 import logging
+import os
 import sys
 import time
 import base64
@@ -63,7 +64,7 @@ class TGFeeder:
         else:
             self.ail = None
 
-        self.lt = LibreTranslateAPI("http://localhost:5000")
+        # self.lt = LibreTranslateAPI("http://localhost:5000")
 
         self.subchannels = {}
 
@@ -85,13 +86,13 @@ class TGFeeder:
         if not self.client.is_connected():
             self.logger.warning('Connection error')
 
-    def translate(self, text):
-        # get text language
-        translation = ''
-        lang = lt.detect(text)[0]
-        if lang['confidence'] >= 50:
-            translation = lt.translate(text, source=lang['language'], target='en')
-        return translation
+    # def translate(self, text):
+    #     # get text language
+    #     translation = ''
+    #     lang = lt.detect(text)[0]
+    #     if lang['confidence'] >= 50:
+    #         translation = lt.translate(text, source=lang['language'], target='en')
+    #     return translation
 
     async def get_chats(self, meta=True):
         channels = []
@@ -501,13 +502,18 @@ class TGFeeder:
 
         return meta
 
-    async def get_media(self, obj_json, message, download=False):  # TODO save dir + size limit
+    async def get_media(self, obj_json, message, download=False, save_dir='downloads'):  # TODO save dir + size limit
         # file: photo + document (audio + gif + sticker + video + video_note + voice)
 
-        if message.file and obj_json['meta']['media'].get('mime_type', 'Nonemime')[:5] == 'image':
-            if download:  # TODO LIMIT FILE SIZE
-                # path = await message.download_media(file='downloads')  # file=bytes to save in memory
-                media_content = await message.download_media(file=bytes)
+        if obj_json['meta']['media'].get('name') and self.ail:
+            print('----------------------------------------------------------------------------')
+            obj_json['meta']['type'] = 'message'
+            self.ail.feed_json_item('', obj_json['meta'], self.source, self.source_uuid)
+            print(json.dumps(obj_json, indent=4, sort_keys=True))
+
+        if download and message.file:
+            if obj_json['meta']['media'].get('mime_type', 'None_mime')[:5] == 'image' and message.file.size < 100000000:
+                media_content = await message.download_media(file=bytes, progress_callback=callback_download)
                 if media_content:
                     # # TODO CHECK IF EMPTY MESS DATA ????
                     obj_media_meta = dict(obj_json)
@@ -519,13 +525,12 @@ class TGFeeder:
                         self.ail.feed_json_item(media_content, obj_media_meta['meta'], self.source, self.source_uuid)
                     # print(json.dumps(obj_media_meta, indent=4, sort_keys=True))
 
-        elif obj_json['meta']['media'].get('name') and self.ail:
-            print('----------------------------------------------------------------------------')
-            obj_json['meta']['type'] = 'message'
-            self.ail.feed_json_item('', obj_json['meta'], self.source, self.source_uuid)
-            print(json.dumps(obj_json, indent=4, sort_keys=True))
-
-            # print(meta)
+            else: # TODO GET FILE HASH
+                if not os.path.exists(save_dir):
+                    os.makedirs(save_dir)
+                # TODO Create save dir if don't exists
+                media_content = await message.download_media(file=save_dir, progress_callback=callback_download)
+                # print(meta)
 
         # message.geo
         # message.media
@@ -548,7 +553,7 @@ class TGFeeder:
 
     # option: get_reply_message ????
     # message.geo
-    async def _process_message(self, message, download=False, replies=True, mark_read=False, chat_meta={}, parent_message_id=None):
+    async def _process_message(self, message, download=False, save_dir=None, replies=True, mark_read=False, chat_meta={}, parent_message_id=None):
         print(message)
         if not message:
             return {}
@@ -585,6 +590,9 @@ class TGFeeder:
                 meta['fwd_from']['saved_from_msg_id'] = message.forward.saved_from_msg_id
             if message.forward.saved_from_peer:
                 meta['fwd_from']['saved_from_peer'] = self._unpack_peer(message.forward.saved_from_peer)
+
+        if message.ttl_period:
+            meta['expire'] = message.ttl_period
 
         # message.peer_id The peer to which this message was sent
         # message.from_id The peer who sent this message. None for anonymous message
@@ -712,21 +720,21 @@ class TGFeeder:
             #         sys.exit(0)
 
             # TODO Multiple medias ??????
-            await self.get_media(mess, message, download=download)
+            await self.get_media(mess, message, download=download, save_dir=save_dir)
 
         # Downloads comments
         if message.replies and replies:
             if message.replies.replies > 0:
                 await self.get_message_replies(message.chat, message.id, meta['chat'])
 
-    async def get_message_replies(self, chat, message_id, chat_meta):
+    async def get_message_replies(self, chat, message_id, chat_meta): # TODO Downloads files
         # chat = await self.get_entity(chat, r_id=True)
         async for message in self.client.iter_messages(chat, reply_to=message_id):
             # print(message)
             # print()
             await self._process_message(message, chat_meta=chat_meta, parent_message_id=message_id)
 
-    async def get_chat_messages(self, chat, download=False, replies=False, min_id=0, max_id=0, limit=None, mark_read=False):
+    async def get_chat_messages(self, chat, download=False, save_dir=None, replies=False, min_id=0, max_id=0, limit=None, mark_read=False):
         messages = []
         # min_id = 1
         # max_id = 5
@@ -737,14 +745,14 @@ class TGFeeder:
         async for message in self.client.iter_messages(chat, min_id=min_id, max_id=max_id, filter=None, limit=limit):
             # print(message)
             # print()
-            mess = await self._process_message(message, replies=replies, mark_read=mark_read, download=download)
+            mess = await self._process_message(message, replies=replies, mark_read=mark_read, download=download, save_dir=save_dir)
 
-    async def get_unread_message(self, download=False, replies=False):
+    async def get_unread_message(self, download=False, save_dir=None, replies=False):
         async for dialog in self.client.iter_dialogs():
             if not dialog.is_user:
                 nb_unread = dialog.unread_count
                 if nb_unread:
-                    await self.get_chat_messages(dialog.entity, download=download, replies=replies, limit=nb_unread, mark_read=True)
+                    await self.get_chat_messages(dialog.entity, download=download, save_dir=save_dir, replies=replies, limit=nb_unread, mark_read=True)
 
     async def _process_deleted_message(self, chat_id, l_message_id):
         chat = self.get_entity(chat_id)
@@ -754,7 +762,7 @@ class TGFeeder:
         print()
 
     # TODO filter chats
-    async def monitor_chats(self):
+    async def monitor_chats(self): # TODO Downloads files
         # subscribe to NewMessage event
         @self.client.on(events.NewMessage)  # NewMessage(incoming=True)
         async def new_message_handler(event):
@@ -792,6 +800,13 @@ def sanityze_message_id(mess_id):
             return 0
     except (TypeError, ValueError):
         return 0
+
+
+# Printing download progress
+def callback_download(current, total):
+    print('Downloaded', current, 'out of', total,
+          'bytes: {:.2%}'.format(current / total))
+
 
 async def monitor_chats(client):
     return await client.monitor_chats()

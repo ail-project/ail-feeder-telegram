@@ -168,9 +168,6 @@ if __name__ == '__main__':
             _json_print(r)
         elif args.command == 'messages':
             chat = args.chat_id
-
-            # subparser.add_argument('--size_limit', type=int, help='Size limit for downloading medias')
-            # subparser.add_argument('--save_dir', help='Directory to save downloaded medias')
             if args.replies:
                 replies = True
             else:
@@ -183,7 +180,11 @@ if __name__ == '__main__':
                 download = True
             else:
                 download = False
-            loop.run_until_complete(tg.get_chat_messages(chat, download=download, replies=replies, mark_read=mark_read))
+            if args.save_dir:
+                save_dir = args.save_dir
+            else:
+                save_dir = args.save_dir
+            loop.run_until_complete(tg.get_chat_messages(chat, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read))
         elif args.command == 'unread':
             if args.replies:
                 replies = True
@@ -193,7 +194,11 @@ if __name__ == '__main__':
                 download = True
             else:
                 download = False
-            loop.run_until_complete(tg.get_unread_message(download=download, replies=replies))
+            if args.save_dir:
+                save_dir = args.save_dir
+            else:
+                save_dir = args.save_dir
+            loop.run_until_complete(tg.get_unread_message(download=download, save_dir=save_dir, replies=replies))
         elif args.command == 'chat':
             chat = args.chat_id
             if args.users or args.admins:
