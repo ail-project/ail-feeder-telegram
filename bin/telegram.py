@@ -260,7 +260,8 @@ class TGFeeder:
                 user_meta = self._unpack_user(user)
                 users.append(user_meta)
         except ChatAdminRequiredError:
-            self.logger.error(f'{chat.id}: Chat admin privileges required')
+            self.logger.error(f'{chat}: Chat admin privileges required')
+            sys.exit(0)
         # except MultiError as e:
         #     if isinstance(e.exceptions[0], ChatAdminRequiredError):
         #         self.logger.error(f'Error, {chat}: Chat admin privileges required')
@@ -578,7 +579,7 @@ class TGFeeder:
         if message.forward:  # message.fwd_from
             meta['fwd_from'] = {}
             meta['fwd_from']['date'] = unpack_datetime(message.forward.date)
-            if message.forward.from_id:
+            if message.forward.from_id: # channel or user ID
                 meta['fwd_from']['from_id'] = self._unpack_peer(message.forward.from_id)
             if message.forward.from_name:
                 meta['fwd_from']['from_name'] = message.forward.from_name
@@ -586,10 +587,15 @@ class TGFeeder:
                 meta['fwd_from']['channel_post'] = message.forward.channel_post
             if message.forward.post_author:
                 meta['fwd_from']['post_author'] = message.forward.post_author
-            if message.forward.saved_from_msg_id:
+            if message.forward.saved_from_msg_id:  # source message ID
                 meta['fwd_from']['saved_from_msg_id'] = message.forward.saved_from_msg_id
-            if message.forward.saved_from_peer:
+            if message.forward.saved_from_peer:  # source chat ID  (user ID ?????)
                 meta['fwd_from']['saved_from_peer'] = self._unpack_peer(message.forward.saved_from_peer)
+                # print(meta['fwd_from'])
+                # sys.exit(0)
+
+            # print(meta['fwd_from'])
+            # sys.exit(0)
 
         if message.ttl_period:
             meta['expire'] = message.ttl_period

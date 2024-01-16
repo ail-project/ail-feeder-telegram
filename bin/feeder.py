@@ -207,7 +207,8 @@ if __name__ == '__main__':
                 else:
                     admin = False
                 r = loop.run_until_complete(tg.get_chat_users(chat, admin=admin))
-                _json_print(r)
+                if r:
+                    _json_print(r)
             else:
                 r = loop.run_until_complete(tg.get_entity(chat))
                 _json_print(r)
