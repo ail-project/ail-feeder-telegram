@@ -52,6 +52,7 @@ feeder.py
 * chat [Chat ID/name] (  _Get a chat metadata, list of users/admins, ..._ )
   * --users ( _Get a list of all the users of a chat_ )
   * --admins ( _Get a list of all the admin users of a chat_ )
+  * --similar ( _Get a list of similar/recommended chats_ )
 * entity [Entity ID/name] ( _Get chat or user metadata_ )
 
 ## Joining Channels

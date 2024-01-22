@@ -15,7 +15,7 @@ from libretranslatepy import LibreTranslateAPI
 from telethon import TelegramClient, events
 # from telethon import helpers
 
-from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelRequest, GetForumTopicsRequest
+from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelRequest, GetForumTopicsRequest, GetChannelRecommendationsRequest
 
 from telethon.tl.types import Channel, User, ChannelParticipantsAdmins, PeerUser, PeerChat, PeerChannel
 # from telethon.tl.types import MessageEntityUrl, MessageEntityTextUrl, MessageEntityMention
@@ -29,6 +29,7 @@ from telethon.tl.functions.channels import GetFullChannelRequest  # channel='use
 # https://tl.telethon.dev/methods/channels/get_full_channel.html
 from telethon.tl.functions.messages import CheckChatInviteRequest, ImportChatInviteRequest
 from telethon.tl.types import MessageEntityTextUrl, MessageEntityMentionName
+from telethon.tl.types.messages import ChatsSlice
 
 # errors
 from telethon.errors.rpcerrorlist import ChatAdminRequiredError  # UserNotParticipantError
@@ -237,17 +238,22 @@ class TGFeeder:
 
     # Note: entity ID: only work if is in a dialog or in the same chat, client.get_participants(group) need to be called
     #       -
-    async def get_entity(self, entity, r_id=False, r_obj=False):
+    async def get_entity(self, entity, r_id=False, r_obj=False, similar=False):
         await self.client.get_dialogs()
         try:
             entity = int(entity)
         except (TypeError, ValueError):
             pass
         try:
-            r = await self.client.get_entity(entity)
+            r_ob = await self.client.get_entity(entity)
             if r_obj:
-                return r
-            entity = self._unpack_get_chat(r)
+                return r_ob
+            entity = self._unpack_get_chat(r_ob)
+            if similar:
+                if not isinstance(r_ob, User):
+                    recommendations = await self.get_chat_recommendations(r_ob)
+                    if recommendations:
+                        entity['similar'] = recommendations
             if r_id:
                 return entity['id']
             else:
@@ -297,6 +303,15 @@ class TGFeeder:
         for topic in topics.topics:
             chat_topic[topic.id] = self._unpack_forum_topic(topic)
         return chat_topic
+
+    async def get_chat_recommendations(self, chat):
+        chats = await self.client(GetChannelRecommendationsRequest(channel=chat))
+        # if isinstance(chats, ChatsSlice):
+        chats = chats.chats
+        l_chats = []
+        for chat in chats:
+            l_chats.append(self._unpack_get_chat(chat))
+        return l_chats
 
     async def _get_profile_photo(self, photo):
         pass

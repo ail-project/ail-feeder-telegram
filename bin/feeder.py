@@ -121,6 +121,7 @@ if __name__ == '__main__':
     get_chat_users_parser.add_argument('chat_id', help='ID, hash or username of the chat')
     get_chat_users_parser.add_argument('--users', action='store_true', help='Get a list of all the users of a chat')
     get_chat_users_parser.add_argument('--admins', action='store_true', help='Get a list of all the admin users of a chat')
+    get_chat_users_parser.add_argument('--similar', action='store_true', help='Get a list of similar/recommended chats')
     # join ? leave ? shortcut
 
     get_metas_parser = subparsers.add_parser('entity', help='Get chat or user metadata')
@@ -201,6 +202,10 @@ if __name__ == '__main__':
             loop.run_until_complete(tg.get_unread_message(download=download, save_dir=save_dir, replies=replies))
         elif args.command == 'chat':
             chat = args.chat_id
+            if args.similar:
+                similar = True
+            else:
+                similar = False
             if args.users or args.admins:
                 if args.admins:
                     admin = True
@@ -210,7 +215,7 @@ if __name__ == '__main__':
                 if r:
                     _json_print(r)
             else:
-                r = loop.run_until_complete(tg.get_entity(chat))
+                r = loop.run_until_complete(tg.get_entity(chat, similar=similar))
                 _json_print(r)
         elif args.command == 'entity':
             entity = args.entity_name
