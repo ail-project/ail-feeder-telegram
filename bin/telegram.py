@@ -72,6 +72,11 @@ class TGFeeder:
         self.users = {}  # TODO ADD ID USER IF DOWNLOADED IMAGE
         # TODO END CLEANUP
 
+    def update_chats_cache(self, meta_chats):
+        chat_id = meta_chats['id']
+        if chat_id not in self.chats:
+            self.chats[chat_id] = meta_chats
+
     def _get_default_dict(self):
         return {'meta': {}, 'source': self.source, 'source-uuid': self.source_uuid}
 
@@ -232,7 +237,7 @@ class TGFeeder:
 
     # Note: entity ID: only work if is in a dialog or in the same chat, client.get_participants(group) need to be called
     #       -
-    async def get_entity(self, entity, r_id=False):
+    async def get_entity(self, entity, r_id=False, r_obj=False):
         await self.client.get_dialogs()
         try:
             entity = int(entity)
@@ -240,6 +245,8 @@ class TGFeeder:
             pass
         try:
             r = await self.client.get_entity(entity)
+            if r_obj:
+                return r
             entity = self._unpack_get_chat(r)
             if r_id:
                 return entity['id']
@@ -247,6 +254,8 @@ class TGFeeder:
                 return entity
         except ValueError:
             self.logger.error(f'Could not find the entity {entity}')
+        except ChannelPrivateError:
+            self.logger.error(f'This channel is private or this account was banned: {entity}')
 
     async def get_chat_users(self, chat, admin=False):
         users = []
@@ -308,7 +317,8 @@ class TGFeeder:
             meta['commands'] = self._unpack_bot_command(bot_info.commands)
         return meta
 
-    async def get_chat_full(self, chat, photo=False): # TODO HANDLE WEIRD ID -> CHANNEL REPLIES IDS
+    # TODO CHAT USERNAME - ACCESS HASH
+    async def get_chat_full(self, chat): # TODO HANDLE WEIRD ID -> CHANNEL REPLIES IDS
         meta = {'id': chat.id}
         if isinstance(chat, Channel):
             full = await self.client(GetFullChannelRequest(chat))
@@ -577,25 +587,46 @@ class TGFeeder:
             meta['forwards'] = message.forwards
         # https://stackoverflow.com/a/75978777
         if message.forward:  # message.fwd_from
-            meta['fwd_from'] = {}
-            meta['fwd_from']['date'] = unpack_datetime(message.forward.date)
-            if message.forward.from_id: # channel or user ID
-                meta['fwd_from']['from_id'] = self._unpack_peer(message.forward.from_id)
+            meta['forward'] = {}
+            meta['forward']['date'] = unpack_datetime(message.forward.date)
+            if message.forward.from_id: # channel or user ID  # TODO DIFF User/CHATS
+                meta['forward']['from'] = self._unpack_peer(message.forward.from_id)
             if message.forward.from_name:
-                meta['fwd_from']['from_name'] = message.forward.from_name
-            if message.forward.channel_post:
-                meta['fwd_from']['channel_post'] = message.forward.channel_post
+                meta['forward']['from_name'] = message.forward.from_name
+            if message.forward.channel_post:  # message ID ????
+                meta['forward']['channel_post'] = message.forward.channel_post
             if message.forward.post_author:
-                meta['fwd_from']['post_author'] = message.forward.post_author
+                meta['forward']['post_author'] = message.forward.post_author
             if message.forward.saved_from_msg_id:  # source message ID
-                meta['fwd_from']['saved_from_msg_id'] = message.forward.saved_from_msg_id
+                meta['forward']['saved_from_msg_id'] = message.forward.saved_from_msg_id
             if message.forward.saved_from_peer:  # source chat ID  (user ID ?????)
-                meta['fwd_from']['saved_from_peer'] = self._unpack_peer(message.forward.saved_from_peer)
-                # print(meta['fwd_from'])
-                # sys.exit(0)
+                meta['forward']['saved_from_peer'] = self._unpack_peer(message.forward.saved_from_peer)
+                # print(meta['forward'])
 
-            # print(meta['fwd_from'])
-            # sys.exit(0)
+            if meta['forward']['from'] and meta['forward']['channel_post'] and self.ail:
+                if meta['forward']['from']['type'] == 'channel' or meta['forward']['from']['type'] == 'chat':
+                    meta_chat = None
+                    # ONLY Send new
+                    if meta['forward']['from']['id'] not in self.chats:
+                        chat_obj = await self.get_entity(meta['forward']['from']['id'], r_obj=True)
+                        if chat_obj:
+                            chat_full = await self.get_chat_full(chat_obj)
+                            meta_chat = self._unpack_get_chat(chat_obj)
+                            self.update_chats_cache(meta_chat)
+                            if 'icon' in chat_full:
+                                meta_chat['icon'] = chat_full['icon']
+                            if 'info' in chat_full:
+                                meta_chat['info'] = chat_full['info']
+                    else:
+                        meta_chat = self.chats[meta['forward']['from']['id']]
+
+                    if meta_chat:
+                        mess_chat = self._get_default_dict()
+                        mess_chat['meta']['type'] = 'chat'
+                        mess_chat['meta']['chat'] = meta_chat
+                        mess_chat['meta']['date'] = meta['date']
+                        self.ail.feed_json_item('', mess_chat['meta'], self.source, self.source_uuid)
+
 
         if message.ttl_period:
             meta['expire'] = message.ttl_period
