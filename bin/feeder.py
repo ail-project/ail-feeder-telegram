@@ -127,6 +127,9 @@ if __name__ == '__main__':
     get_metas_parser = subparsers.add_parser('entity', help='Get chat or user metadata')
     get_metas_parser.add_argument('entity_name', help='ID, hash or username of the chat/user')
 
+    search_parser = subparsers.add_parser('search', help='Search for chats/users')
+    search_parser.add_argument('to_search', help='String to search')
+
     args = parser.parse_args()
 
     # Start client
@@ -220,6 +223,10 @@ if __name__ == '__main__':
         elif args.command == 'entity':
             entity = args.entity_name
             r = loop.run_until_complete(tg.get_entity(entity))
+            _json_print(r)
+        elif args.command == 'search':
+            to_search = args.to_search
+            r = loop.run_until_complete(tg.search_contact(to_search))
             _json_print(r)
         else:
             parser.print_help()

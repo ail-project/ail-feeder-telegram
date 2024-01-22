@@ -54,6 +54,7 @@ feeder.py
   * --admins ( _Get a list of all the admin users of a chat_ )
   * --similar ( _Get a list of similar/recommended chats_ )
 * entity [Entity ID/name] ( _Get chat or user metadata_ )
+* search [to_search] ( _Search for public Chats/Users_ )
 
 ## Joining Channels
 ```bash

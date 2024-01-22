@@ -29,6 +29,7 @@ from telethon.tl.functions.channels import GetFullChannelRequest  # channel='use
 # https://tl.telethon.dev/methods/channels/get_full_channel.html
 from telethon.tl.functions.messages import CheckChatInviteRequest, ImportChatInviteRequest
 from telethon.tl.types import MessageEntityTextUrl, MessageEntityMentionName
+from telethon.tl.functions.contacts import SearchRequest
 from telethon.tl.types.messages import ChatsSlice
 
 # errors
@@ -37,6 +38,7 @@ from telethon.errors.rpcerrorlist import InviteHashExpiredError, InviteHashInval
 from telethon.errors import ChannelsTooMuchError, ChannelInvalidError, ChannelPrivateError, InviteRequestSentError
 from telethon.errors import ChannelPublicGroupNaError, UserCreatorError, UserNotParticipantError, InviteHashEmptyError
 from telethon.errors import UsersTooMuchError, UserAlreadyParticipantError, SessionPasswordNeededError
+from telethon.errors import QueryTooShortError, SearchQueryEmptyError, TimeoutError
 # from telethon.errors.common import MultiError
 
 # import logging
@@ -312,6 +314,26 @@ class TGFeeder:
         for chat in chats:
             l_chats.append(self._unpack_get_chat(chat))
         return l_chats
+
+    async def search_contact(self, to_search, limit=None):
+        entities = []
+        try:
+            res = await self.client(SearchRequest(to_search, limit=100))
+            if res:
+                for chat in res.chats:
+                    entities.append(self._unpack_get_chat(chat))
+                for user in res.users:
+                    entities.append(self._unpack_get_chat(user))
+        except QueryTooShortError:
+            self.logger.error(f'The query string is too short: {to_search}')
+            sys.exit(0)
+        except SearchQueryEmptyError:
+            self.logger.error(f'The search query is empty')
+            sys.exit(0)
+        except TimeoutError:
+            self.logger.error(f'A timeout occurred while fetching data from the worker')
+            sys.exit(0)
+        return entities
 
     async def _get_profile_photo(self, photo):
         pass
