@@ -617,7 +617,8 @@ class TGFeeder:
         meta['date'] = unpack_datetime(message.date)
         if message.edit_date:
             meta['edit_date'] = unpack_datetime(message.edit_date)
-        print(message.views)
+        if message.media:
+            meta['media'] = self._unpack_media_meta(message)
         if message.views:
             meta['views'] = message.views
         if message.forwards: # The number of times this message has been forwarded.
@@ -639,30 +640,39 @@ class TGFeeder:
             if message.forward.saved_from_peer:  # source chat ID  (user ID ?????)
                 meta['forward']['saved_from_peer'] = self._unpack_peer(message.forward.saved_from_peer)
                 # print(meta['forward'])
+            # print(meta['date'])
+            # print(meta['forward'])
+            #sys.exit(0)
 
-            if meta['forward']['from'] and meta['forward']['channel_post'] and self.ail:
-                if meta['forward']['from']['type'] == 'channel' or meta['forward']['from']['type'] == 'chat':
-                    meta_chat = None
-                    # ONLY Send new
-                    if meta['forward']['from']['id'] not in self.chats:
-                        chat_obj = await self.get_entity(meta['forward']['from']['id'], r_obj=True)
-                        if chat_obj:
-                            chat_full = await self.get_chat_full(chat_obj)
-                            meta_chat = self._unpack_get_chat(chat_obj)
-                            self.update_chats_cache(meta_chat)
-                            if 'icon' in chat_full:
-                                meta_chat['icon'] = chat_full['icon']
-                            if 'info' in chat_full:
-                                meta_chat['info'] = chat_full['info']
-                    else:
-                        meta_chat = self.chats[meta['forward']['from']['id']]
-
-                    if meta_chat:
-                        mess_chat = self._get_default_dict()
-                        mess_chat['meta']['type'] = 'chat'
-                        mess_chat['meta']['chat'] = meta_chat
-                        mess_chat['meta']['date'] = meta['date']
-                        self.ail.feed_json_item('', mess_chat['meta'], self.source, self.source_uuid)
+            # TODO FORWARDS
+            # if meta['forward']['from'] and meta['forward']['channel_post'] and self.ail:
+            #     if meta['forward']['from']['type'] == 'channel' or meta['forward']['from']['type'] == 'chat':
+            #         meta_chat = None
+            #         # ONLY Send new
+            #         if meta['forward']['from']['id'] not in self.chats:
+            #             chat_obj = await self.get_entity(meta['forward']['from']['id'], r_obj=True)
+            #             if chat_obj:
+            #                 chat_full = await self.get_chat_full(chat_obj)
+            #                 meta_chat = self._unpack_get_chat(chat_obj)
+            #                 self.update_chats_cache(meta_chat)
+            #                 if 'icon' in chat_full:
+            #                     meta_chat['icon'] = chat_full['icon']
+            #                 if 'info' in chat_full:
+            #                     meta_chat['info'] = chat_full['info']
+            #         else:
+            #             meta_chat = self.chats[meta['forward']['from']['id']]
+            #
+            #         if meta_chat:                                                       # TODO forwarded media
+            #             mess_chat = self._get_default_dict()
+            #             mess_chat['meta']['chat'] = meta_chat
+            #             mess_chat['meta']['type'] = 'chat'
+            #             mess_chat['meta']['date'] = meta['date']
+            #             if 'media' in meta:
+            #                 mess_chat['meta']['media'] = meta['media']
+            #             self.ail.feed_json_item('', mess_chat['meta'], self.source, self.source_uuid)
+            #
+            #             # mess_chat['meta']['type'] = 'message'
+            #             # mess_chat['meta']['date'] = meta['forward']['date']
 
 
         if message.ttl_period:
@@ -769,9 +779,6 @@ class TGFeeder:
                 elif isinstance(reaction, ReactionCustomEmoji):  # Fetch custom emoji ???
                     reaction = reaction.document_id
                 meta['reactions'].append({'reaction': reaction, 'count': reaction_count.count})
-
-        if message.media:
-            meta['media'] = self._unpack_media_meta(message)
 
         # mark as read
         if mark_read:
