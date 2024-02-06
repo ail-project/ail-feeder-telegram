@@ -550,7 +550,7 @@ class TGFeeder:
 
         return meta
 
-    async def get_media(self, obj_json, message, download=False, save_dir='downloads'):  # TODO save dir + size limit
+    async def get_media(self, obj_json, message, download=False, save_dir=''):  # save_dir='downloads' # TODO save dir + size limit
         # file: photo + document (audio + gif + sticker + video + video_note + voice)
 
         if obj_json['meta']['media'].get('name') and self.ail:
@@ -573,7 +573,7 @@ class TGFeeder:
                         self.ail.feed_json_item(media_content, obj_media_meta['meta'], self.source, self.source_uuid)
                     # print(json.dumps(obj_media_meta, indent=4, sort_keys=True))
 
-            else: # TODO GET FILE HASH
+            elif save_dir:  # TODO GET FILE HASH
                 if not os.path.exists(save_dir):
                     os.makedirs(save_dir)
                 # TODO Create save dir if don't exists
