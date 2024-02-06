@@ -573,7 +573,7 @@ class TGFeeder:
                         self.ail.feed_json_item(media_content, obj_media_meta['meta'], self.source, self.source_uuid)
                     # print(json.dumps(obj_media_meta, indent=4, sort_keys=True))
 
-            elif save_dir:  # TODO GET FILE HASH
+            if save_dir:  # TODO GET FILE HASH
                 if not os.path.exists(save_dir):
                     os.makedirs(save_dir)
                 # TODO Create save dir if don't exists

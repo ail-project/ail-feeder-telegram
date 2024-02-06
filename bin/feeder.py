@@ -201,7 +201,7 @@ if __name__ == '__main__':
             if args.save_dir:
                 save_dir = args.save_dir
             else:
-                save_dir = args.save_dir
+                save_dir = ''
             loop.run_until_complete(tg.get_unread_message(download=download, save_dir=save_dir, replies=replies))
         elif args.command == 'chat':
             chat = args.chat_id
