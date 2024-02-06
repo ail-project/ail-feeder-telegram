@@ -836,7 +836,7 @@ class TGFeeder:
                     await self.get_chat_messages(dialog.entity, download=download, save_dir=save_dir, replies=replies, limit=nb_unread, mark_read=True)
 
     async def _process_deleted_message(self, chat_id, l_message_id):
-        chat = self.get_entity(chat_id)
+        chat = await self.get_entity(chat_id)
         print(chat)
         for message_id in l_message_id:
             print(message_id)
