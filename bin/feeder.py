@@ -142,7 +142,15 @@ if __name__ == '__main__':
     # loop.run_until_complete(tg.client.get_dialogs())
     # Call the corresponding function based on the command
     if args.command == 'monitor':
-        loop.run_until_complete(tg.monitor_chats())
+        if args.media:
+            download = True
+        else:
+            download = False
+        if args.save_dir:
+            save_dir = args.save_dir
+        else:
+            save_dir = ''
+        loop.run_until_complete(tg.monitor_chats(download=download, save_dir=save_dir))
         tg.client.run_until_disconnected()
     else:
         if args.command == 'chats':
@@ -187,7 +195,7 @@ if __name__ == '__main__':
             if args.save_dir:
                 save_dir = args.save_dir
             else:
-                save_dir = args.save_dir
+                save_dir = ''
             loop.run_until_complete(tg.get_chat_messages(chat, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read))
         elif args.command == 'unread':
             if args.replies:

@@ -843,12 +843,12 @@ class TGFeeder:
         print()
 
     # TODO filter chats
-    async def monitor_chats(self): # TODO Downloads files
+    async def monitor_chats(self, download=False, save_dir=None):
         # subscribe to NewMessage event
         @self.client.on(events.NewMessage)  # NewMessage(incoming=True)
         async def new_message_handler(event):
             # filter event
-            await self._process_message(event.message)
+            await self._process_message(event.message, download=download, save_dir=save_dir)
 
         @self.client.on(events.MessageDeleted)
         async def new_message_deleted(event):
@@ -888,9 +888,6 @@ def callback_download(current, total):
     print('Downloaded', current, 'out of', total,
           'bytes: {:.2%}'.format(current / total))
 
-
-async def monitor_chats(client):
-    return await client.monitor_chats()
 
 # message.entities
 ### BEGIN - MESSAGE ENTITY ###
