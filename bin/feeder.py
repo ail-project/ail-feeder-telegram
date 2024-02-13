@@ -226,7 +226,7 @@ if __name__ == '__main__':
                 if r:
                     _json_print(r)
             else:
-                r = loop.run_until_complete(tg.get_entity(chat, similar=similar))
+                r = loop.run_until_complete(tg.get_entity(chat, similar=similar, full=True))
                 _json_print(r)
         elif args.command == 'entity':
             entity = args.entity_name

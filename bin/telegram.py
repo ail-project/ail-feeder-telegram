@@ -147,7 +147,13 @@ class TGFeeder:
         except InviteHashInvalidError:
             self.logger.warning('Error: The invite hash is invalid')
 
-    async def join_chat(self, chat=None, invite=None):
+    async def join_chat_discussion(self, chat):
+        chat_full = await self.get_chat_full(chat, image=False)
+        if chat_full['discussion']['channel'] == chat_full['id']:
+            meta_discussion = await self.join_chat(chat=chat_full['discussion']['chat'], discussion=False)
+            return meta_discussion
+
+    async def join_chat(self, chat=None, invite=None, discussion=True):
         # join a public chat/channel
         # channel are a special form of chat
         if chat:
@@ -155,15 +161,20 @@ class TGFeeder:
                 chat = int(chat)
             except (TypeError, ValueError):
                 pass
-            chat = await self.client.get_entity(chat) # TODO
+            chat = await self.client.get_entity(chat)  # TODO
             try:
                 updates = await self.client(JoinChannelRequest(chat))
-                # print(updates)
+                meta = {}
                 if updates:
-                    meta = {}
                     if updates.chats:
-                        meta = self._unpack_get_chat(updates.chats[0])
-                    return meta
+                        chat = updates.chats[0]
+                        meta = self._unpack_get_chat(chat)
+                        if chat.has_link and discussion:
+                            meta_discussion = await self.join_chat_discussion(chat)
+                            if meta_discussion:
+                                return [meta, meta_discussion]
+                return meta
+
             except ChannelsTooMuchError:
                 self.logger.error('You have joined too many channels/supergroups')
             except ChannelInvalidError:
@@ -177,11 +188,17 @@ class TGFeeder:
             # TODO validate_join_code option -> check if hash
             try:
                 updates = await self.client(ImportChatInviteRequest(invite))
+                meta = {}
                 if updates:
-                    meta = {}
                     if updates.chats:
+                        chat = updates.chats[0]
                         meta = self._unpack_get_chat(updates.chats[0])
-                    return meta
+                        if chat.has_link and discussion:
+                            meta_discussion = await self.join_chat_discussion(chat)
+                            if meta_discussion:
+                                return [meta, meta_discussion]
+                return meta
+
             except ChannelsTooMuchError:
                 self.logger.error('You have joined too many channels/supergroups')
             except InviteHashEmptyError:
@@ -240,7 +257,7 @@ class TGFeeder:
 
     # Note: entity ID: only work if is in a dialog or in the same chat, client.get_participants(group) need to be called
     #       -
-    async def get_entity(self, entity, r_id=False, r_obj=False, similar=False):
+    async def get_entity(self, entity, r_id=False, r_obj=False, similar=False, full=False):
         await self.client.get_dialogs()
         try:
             entity = int(entity)
@@ -250,7 +267,12 @@ class TGFeeder:
             r_ob = await self.client.get_entity(entity)
             if r_obj:
                 return r_ob
-            entity = self._unpack_get_chat(r_ob)
+
+            if full:
+                entity = await self.get_chat_full(r_ob, image=False)
+            else:
+                entity = self._unpack_get_chat(r_ob)
+
             if similar:
                 if not isinstance(r_ob, User):
                     recommendations = await self.get_chat_recommendations(r_ob)
@@ -355,7 +377,7 @@ class TGFeeder:
         return meta
 
     # TODO CHAT USERNAME - ACCESS HASH
-    async def get_chat_full(self, chat): # TODO HANDLE WEIRD ID -> CHANNEL REPLIES IDS
+    async def get_chat_full(self, chat, image=True):
         meta = {'id': chat.id}
         if isinstance(chat, Channel):
             full = await self.client(GetFullChannelRequest(chat))
@@ -367,14 +389,32 @@ class TGFeeder:
         full_chat = full.full_chat
         chats = full.chats
         users = full.users
-
         # print(chats)
         # print(users)
+        # print(full.stringify())
+
+        if full_chat.linked_chat_id:
+            linked_chat = full_chat.linked_chat_id
+        else:
+            linked_chat = None
+
+        for rel_chat in chats:
+            if rel_chat.id == chat.id:
+                meta = self._unpack_get_chat(rel_chat)
+
+            if rel_chat.id == linked_chat:
+                meta['discussion'] = {}
+                if rel_chat.broadcast:
+                    meta['discussion']['chat'] = chat.id
+                    meta['discussion']['channel'] = rel_chat.id
+                else:
+                    meta['discussion']['chat'] = rel_chat.id
+                    meta['discussion']['channel'] = chat.id
 
         # Unpack FULL Chat
         meta['info'] = full_chat.about
 
-        if full_chat.chat_photo:
+        if image and full_chat.chat_photo:
             icon = await self.client.download_profile_photo(chat, file=bytes)
             if icon:
                 meta['icon'] = base64.standard_b64encode(icon).decode()
@@ -399,7 +439,6 @@ class TGFeeder:
             pass
             # print(full_chat.participants)
             # chat_photo optionnal
-
 
         # bot info
         if full_chat.bot_info:
@@ -621,23 +660,23 @@ class TGFeeder:
             meta['media'] = self._unpack_media_meta(message)
         if message.views:
             meta['views'] = message.views
-        if message.forwards: # The number of times this message has been forwarded.
+        if message.forwards:  # The number of times this message has been forwarded.
             meta['forwards'] = message.forwards
         # https://stackoverflow.com/a/75978777
         if message.forward:  # message.fwd_from
             meta['forward'] = {}
             meta['forward']['date'] = unpack_datetime(message.forward.date)
-            if message.forward.from_id: # channel or user ID  # TODO DIFF User/CHATS
+            if message.forward.from_id:  # original channel or user ID  # TODO DIFF User/CHATS
                 meta['forward']['from'] = self._unpack_peer(message.forward.from_id)
             if message.forward.from_name:
                 meta['forward']['from_name'] = message.forward.from_name
-            if message.forward.channel_post:  # message ID ????
+            if message.forward.channel_post:  # original message ID
                 meta['forward']['channel_post'] = message.forward.channel_post
             if message.forward.post_author:
                 meta['forward']['post_author'] = message.forward.post_author
-            if message.forward.saved_from_msg_id:  # source message ID
+            if message.forward.saved_from_msg_id:  # previous source message ID
                 meta['forward']['saved_from_msg_id'] = message.forward.saved_from_msg_id
-            if message.forward.saved_from_peer:  # source chat ID  (user ID ?????)
+            if message.forward.saved_from_peer:  # previous source chat/user ID
                 meta['forward']['saved_from_peer'] = self._unpack_peer(message.forward.saved_from_peer)
                 # print(meta['forward'])
             # print(meta['date'])
@@ -704,6 +743,9 @@ class TGFeeder:
             else:
                 reply_meta['message_id'] = message.reply_to.reply_to_msg_id
             meta['reply_to'] = reply_meta
+            # print(meta['reply_to'])
+            # print(message.stringify())
+            # sys.exit(0)
 
         # Message comment original chat
         if chat_meta:
