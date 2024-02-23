@@ -108,6 +108,11 @@ if __name__ == '__main__':
     messages_parser.add_argument('chat_id', help='ID of the chat.')  # TODO NB messages
     _create_messages_subparser(messages_parser)
 
+    message_parser = subparsers.add_parser('message', help='Get a message from a chat')
+    message_parser.add_argument('chat_id', help='ID of the chat.')
+    message_parser.add_argument('mess_id', help='ID of the message.')
+    _create_messages_subparser(message_parser)
+
     monitor_chats_parser = subparsers.add_parser('monitor', help='Monitor chats')
     _create_messages_subparser(monitor_chats_parser)
 
@@ -197,6 +202,39 @@ if __name__ == '__main__':
             else:
                 save_dir = ''
             loop.run_until_complete(tg.get_chat_messages(chat, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read))
+        elif args.command == 'message':
+            chat = args.chat_id
+            mess_id = args.mess_id
+            try:
+                mess_id = int(mess_id)
+            except ValueError as e:
+                print('Invalid message ID')
+                sys.exit(0)
+            if mess_id <= 0:
+                print('Fetching all messages')
+                min_id = 0
+                max_id = 0
+            else:
+                min_id = mess_id - 1
+                max_id = mess_id + 1
+
+            if args.replies:
+                replies = True
+            else:
+                replies = False
+            if args.mark_as_read:
+                mark_read = True
+            else:
+                mark_read = False
+            if args.media:
+                download = True
+            else:
+                download = False
+            if args.save_dir:
+                save_dir = args.save_dir
+            else:
+                save_dir = ''
+            loop.run_until_complete(tg.get_chat_messages(chat, min_id=min_id, max_id=max_id, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read))
         elif args.command == 'unread':
             if args.replies:
                 replies = True
