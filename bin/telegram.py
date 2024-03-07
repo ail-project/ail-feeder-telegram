@@ -17,7 +17,7 @@ from telethon import TelegramClient, events
 
 from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelRequest, GetForumTopicsRequest, GetChannelRecommendationsRequest
 
-from telethon.tl.types import Channel, User, ChannelParticipantsAdmins, PeerUser, PeerChat, PeerChannel
+from telethon.tl.types import Channel, User, ChannelParticipantsAdmins, PeerUser, PeerChat, PeerChannel, ForumTopicDeleted
 # from telethon.tl.types import MessageEntityUrl, MessageEntityTextUrl, MessageEntityMention
 from telethon.tl.types import ReactionEmoji, ReactionCustomEmoji
 from telethon.tl.types import Chat, ChatFull, ChannelFull  # ChatEmpty
@@ -320,7 +320,11 @@ class TGFeeder:
         return await self.get_chat_users(chat, admin=True)
 
     def _unpack_forum_topic(self, topic):
-        meta = {'id': topic.id, 'date': unpack_datetime(topic.date), 'name': topic.title}
+        if isinstance(topic, ForumTopicDeleted):
+            meta = {'id': topic.id}
+            print('Deleted Forum Topic:', meta)
+        else:
+            meta = {'id': topic.id, 'date': unpack_datetime(topic.date), 'name': topic.title}
         # TODO from_id
         return meta
 
