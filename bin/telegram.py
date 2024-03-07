@@ -39,6 +39,7 @@ from telethon.errors import ChannelsTooMuchError, ChannelInvalidError, ChannelPr
 from telethon.errors import ChannelPublicGroupNaError, UserCreatorError, UserNotParticipantError, InviteHashEmptyError
 from telethon.errors import UsersTooMuchError, UserAlreadyParticipantError, SessionPasswordNeededError
 from telethon.errors import QueryTooShortError, SearchQueryEmptyError, TimeoutError
+from telethon.errors import FileIdInvalidError
 # from telethon.errors.common import MultiError
 
 # import logging
@@ -248,7 +249,14 @@ class TGFeeder:
                 meta['info'] = user_f.about
             # common_chats_count
             if user_f.profile_photo:
-                meta['icon'] = base64.standard_b64encode(await self.client.download_profile_photo(user, file=bytes)).decode()
+                try:
+                    meta['icon'] = base64.standard_b64encode(await self.client.download_profile_photo(user, file=bytes)).decode()
+                except FileIdInvalidError:
+                    print('-------------------------------------------------------')
+                    print('ERROR: FileIdInvalidError')
+                    print(full)
+                    print(meta)
+                    print('-------------------------------------------------------')
             # print(user.profile_photo)
             return meta
         except ValueError as e:
