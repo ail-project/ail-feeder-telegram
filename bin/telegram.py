@@ -575,6 +575,40 @@ class TGFeeder:
         # text = helpers.del_surrogate(text)
         return text
 
+    # poll:
+    # status (open, closed)
+    # date import ????
+    # multiple answers
+    def _unpack_poll(self, poll):
+        print()
+        p = poll.poll
+        meta = {'id': p.id, 'question': p.question, 'answers': []}
+        dirct_answers = {}
+        for answers in p.answers:
+            dirct_answers[answers.option] = {'answer': answers.text}
+
+        if poll.results.total_voters:
+            meta['votes'] = poll.results.total_voters
+
+        if poll.results.results:
+            for a_res in poll.results.results:
+                dirct_answers[a_res.option]['votes'] = a_res.voters
+                # chosen
+                # correct
+
+        for k in dirct_answers.keys():
+            meta['answers'].append(dirct_answers[k])
+
+        # print()
+        # print(poll)
+        # print()
+        # print(poll.poll)
+        # print()
+        # print(poll.results)
+        # print(json.dumps(meta, indent=2))
+        # sys.exit(0)
+        return meta
+
     def _unpack_media_meta(self, message):
         meta = {}
         file = message.file
@@ -599,16 +633,20 @@ class TGFeeder:
             # message.document.file_reference ?
             # message.photo.file_reference ?
 
+        # poll
+        poll = message.poll
+        if poll:
+            meta = self._unpack_poll(poll)
         return meta
 
     async def get_media(self, obj_json, message, download=False, save_dir=''):  # save_dir='downloads' # TODO save dir + size limit
         # file: photo + document (audio + gif + sticker + video + video_note + voice)
 
-        if obj_json['meta']['media'].get('name') and self.ail:
-            print('----------------------------------------------------------------------------')
-            obj_json['meta']['type'] = 'message'
-            self.ail.feed_json_item('', obj_json['meta'], self.source, self.source_uuid)
-            print(json.dumps(obj_json, indent=4, sort_keys=True))
+        # if obj_json['meta']['media'].get('name') and self.ail:
+        #     print('----------------------------------------------------------------------------')
+        #     obj_json['meta']['type'] = 'message'
+        #     self.ail.feed_json_item('', obj_json['meta'], self.source, self.source_uuid)
+        #     print(json.dumps(obj_json, indent=4, sort_keys=True))
 
         if download and message.file:
             if obj_json['meta']['media'].get('mime_type', 'None_mime')[:5] == 'image' and message.file.size < 100000000:
