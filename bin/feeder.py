@@ -106,6 +106,8 @@ if __name__ == '__main__':
 
     messages_parser = subparsers.add_parser('messages', help='Get all messages from a chat')
     messages_parser.add_argument('chat_id', help='ID of the chat.')  # TODO NB messages
+    messages_parser.add_argument('--min_id', type=int, help='minimal ID of chat messages.')
+    messages_parser.add_argument('--max_id', type=int, help='maximum ID of chat messages.')
     _create_messages_subparser(messages_parser)
 
     message_parser = subparsers.add_parser('message', help='Get a message from a chat')
@@ -201,7 +203,32 @@ if __name__ == '__main__':
                 save_dir = args.save_dir
             else:
                 save_dir = ''
-            loop.run_until_complete(tg.get_chat_messages(chat, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read))
+
+            # MIN/MAX Message ID
+            if args.min_id or args.max_id:
+                # MIN/MAX Message ID
+                if args.min_id:
+                    min_id = args.min_id
+                    if min_id <= 0:
+                        min_id = 0
+                    else:
+                        min_id = min_id - 1
+                else:
+                    min_id = 0
+
+                if args.max_id:
+                    max_id = args.max_id
+                    if max_id <= 0:
+                        max_id = 0
+                    else:
+                        max_id = max_id + 1
+                else:
+                    max_id = 0
+
+                loop.run_until_complete(tg.get_chat_messages(chat, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read, min_id=min_id, max_id=max_id))
+            else:
+                loop.run_until_complete(tg.get_chat_messages(chat, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read))
+
         elif args.command == 'message':
             chat = args.chat_id
             mess_id = args.mess_id

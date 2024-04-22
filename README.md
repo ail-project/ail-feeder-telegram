@@ -44,6 +44,8 @@ feeder.py
 * leave [Channel] ( _Leave a Chat_ )
 * check [Invite Hash] ( _Check an invite hash/chat without joining_ )
 * messages [Chat ID/username] ( _Get all messages from a chat_ )
+  * --min_id [Message ID] ( _Filter: Message Minimal ID_ )
+  * --max_id [Message ID] ( _Filter: Message Maximum ID_ )
   * --replies ( _Get replies_ )
   * --mark_as_read ( _Mark messages as read_ )
   * --media ( _Download medias_ )
