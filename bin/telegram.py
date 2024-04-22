@@ -467,6 +467,13 @@ class TGFeeder:
 
         return meta
 
+    async def get_private_chat_meta(self, chat, image=True):
+        meta = self._unpack_get_chat(chat)
+        if image and chat.photo:
+            icon = await self.client.download_profile_photo(chat, file=bytes)
+            if icon:
+                meta['icon'] = base64.standard_b64encode(icon).decode()
+        return meta
 
     # TODO metas
     # photo
@@ -549,7 +556,10 @@ class TGFeeder:
     async def unpack_sender(self, sender):
         if isinstance(sender, Channel):
             if sender.id not in self.chats:
-                self.chats[sender.id] = await self.get_chat_full(sender)
+                try:
+                    self.chats[sender.id] = await self.get_chat_full(sender)
+                except ChannelPrivateError:
+                    self.chats[sender.id] = await self.get_private_chat_meta(sender)
             return self._unpack_channel(sender)
         elif isinstance(sender, User):
             if sender.id not in self.users:
