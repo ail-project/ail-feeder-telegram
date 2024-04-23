@@ -31,8 +31,11 @@ from telethon.tl.functions.messages import CheckChatInviteRequest, ImportChatInv
 from telethon.tl.types import MessageEntityTextUrl, MessageEntityMentionName
 from telethon.tl.functions.contacts import SearchRequest
 from telethon.tl.types.messages import ChatsSlice
+from telethon.tl.functions.chatlists import CheckChatlistInviteRequest
+from telethon.tl.types.chatlists import ChatlistInvite, ChatlistInviteAlready
 
 # errors
+from telethon.errors.rpcbaseerrors import BadRequestError
 from telethon.errors.rpcerrorlist import ChatAdminRequiredError  # UserNotParticipantError
 from telethon.errors.rpcerrorlist import InviteHashExpiredError, InviteHashInvalidError
 from telethon.errors import ChannelsTooMuchError, ChannelInvalidError, ChannelPrivateError, InviteRequestSentError
@@ -265,8 +268,9 @@ class TGFeeder:
 
     # Note: entity ID: only work if is in a dialog or in the same chat, client.get_participants(group) need to be called
     #       -
-    async def get_entity(self, entity, r_id=False, r_obj=False, similar=False, full=False):
-        await self.client.get_dialogs()
+    async def get_entity(self, entity, r_id=False, r_obj=False, similar=False, full=False, load_dialog=True):
+        if load_dialog:
+            await self.client.get_dialogs()
         try:
             entity = int(entity)
         except (TypeError, ValueError):
@@ -368,6 +372,51 @@ class TGFeeder:
             self.logger.error(f'A timeout occurred while fetching data from the worker')
             sys.exit(0)
         return entities
+
+    # TODO LIST / JOIN NEW ADDED CHATS
+    async def get_chats_folder_list(self, folder_code):  # TODO Check slug length ???
+        meta = {'chats': []}
+        try:
+            c_list = await self.client(CheckChatlistInviteRequest(slug=folder_code))
+            if isinstance(c_list, ChatlistInvite):
+                if c_list.chats:
+                    meta['name'] = c_list.title
+                if c_list.peers:
+                    for peers in c_list.peers:
+                        # print(await self.client.get_entity(peers))
+                        chat_meta = await self.get_entity(peers, load_dialog=False)
+                        if not chat_meta:
+                            chat_meta = self._unpack_peer(peers)
+                        meta['chats'].append(chat_meta)
+                # print(c_list.emoticon)  # list emoticon
+                # print(c_list.chats) # meta chat -> can be empty
+                # print(c_list.users) # meta user
+
+            elif isinstance(c_list, ChatlistInviteAlready):
+                # local ID: c_list.filter_id
+                for peers in c_list.missing_peers:  # TODO LIST / JOIN NEW ADDED CHATS
+                    chat_meta = await self.get_entity(peers, load_dialog=False)
+                    if not chat_meta:
+                        chat_meta = self._unpack_peer(peers)
+                    meta['chats'].append(chat_meta)
+
+                for peers in c_list.already_peers:
+                    chat_meta = await self.get_entity(peers, load_dialog=False)
+                    if not chat_meta:
+                        chat_meta = self._unpack_peer(peers)
+                    meta['chats'].append(chat_meta)
+                # print(c_list.chats)
+                # print(c_list.users)
+
+        except BadRequestError as e:
+            if e.message == 'INVITE_SLUG_EMPTY':
+                self.logger.error(f'The specified chat folder/list is empty.')
+            elif e.message == 'INVITE_SLUG_EXPIRED':
+                self.logger.error(f'The specified chat folder/list has expired or is invalid.')
+            else:
+                self.logger.error(str(e))
+            sys.exit(0)
+        return meta
 
     async def _get_profile_photo(self, photo):
         pass
