@@ -524,6 +524,50 @@ class TGFeeder:
                 meta['icon'] = base64.standard_b64encode(icon).decode()
         return meta
 
+    # Get Chat metas
+    async def get_chat_meta(self, chat=None, chat_id=None):
+        meta = {}
+        if not chat:
+            chat = await self.get_entity(chat_id, r_obj=True)
+
+        if chat:
+            if chat.id not in self.chats and not isinstance(chat, User):
+                try:
+                    self.chats[chat.id] = await self.get_chat_full(chat)
+                except ChannelPrivateError:
+                    self.chats[chat.id] = await self.get_private_chat_meta(chat)
+            meta = self.chats[chat.id]
+
+            if isinstance(chat, Channel):
+                # TODO -> refresh subchannels list on watch -> get new channels creation
+                if chat.forum:
+                    # Save Forum topics in CACHE
+                    if chat.id not in self.subchannels:
+                        self.subchannels[chat.id] = await self.get_chats_topics(chat.id)
+                    meta['subchannels'] = list(self.subchannels[chat.id].values())
+        return meta
+
+    def get_message_subchannel(self, chat_id, message, meta):  # chat.id
+        # TODO USE subchannel_IDS DICT
+        # Get Message Subchannel. General topic ID = 1
+        if 'reply_to' not in meta:
+            # if 1 in self.subchannels[chat.id]: # TODO raise Exception
+            meta['chat']['subchannel'] = self.subchannels[chat_id][1]
+        elif not message.reply_to.forum_topic:
+            # if 1 in self.subchannels[chat.id]:  # TODO raise Exception
+            meta['chat']['subchannel'] = self.subchannels[chat_id][1]
+        elif message.reply_to.reply_to_top_id:
+            # if message.reply_to.reply_to_top_id in self.subchannels[chat.id]:
+            meta['chat']['subchannel'] = self.subchannels[chat_id][message.reply_to.reply_to_top_id]
+        else:
+            if meta['reply_to']['message_id'] in self.subchannels[chat_id]:
+                meta['chat']['subchannel'] = self.subchannels[chat_id][meta['reply_to']['message_id']]
+                del meta['reply_to']
+        if not meta['chat']['subchannel']:
+            print(meta)
+            sys.exit(0)  # TODO raise exception
+        return meta
+
     # TODO metas
     # photo
     # channel type
@@ -540,7 +584,6 @@ class TGFeeder:
             meta['username'] = channel.username.lower()
         if channel.access_hash:
             meta['access_hash'] = channel.access_hash
-
         return meta
 
     # TODO metas
@@ -709,7 +752,12 @@ class TGFeeder:
 
         if download and message.file:
             if obj_json['meta']['media'].get('mime_type', 'None_mime')[:5] == 'image' and message.file.size < 100000000:
-                media_content = await message.download_media(file=bytes, progress_callback=callback_download)
+                try:
+                    media_content = await message.download_media(file=bytes, progress_callback=callback_download)
+                except ValueError as e:
+                    print(e)
+                    media_content = None
+
                 if media_content:
                     # # TODO CHECK IF EMPTY MESS DATA ????
                     obj_media_meta = dict(obj_json)
@@ -769,6 +817,9 @@ class TGFeeder:
             meta['media'] = self._unpack_media_meta(message)
         if message.views:
             meta['views'] = message.views
+
+        ## FORWARD ##
+
         if message.forwards:  # The number of times this message has been forwarded.
             meta['forwards'] = message.forwards
         # https://stackoverflow.com/a/75978777
@@ -787,41 +838,21 @@ class TGFeeder:
                 meta['forward']['saved_from_msg_id'] = message.forward.saved_from_msg_id
             if message.forward.saved_from_peer:  # previous source chat/user ID
                 meta['forward']['saved_from_peer'] = self._unpack_peer(message.forward.saved_from_peer)
-                # print(meta['forward'])
-            # print(meta['date'])
-            # print(meta['forward'])
-            #sys.exit(0)
 
-            # TODO FORWARDS
-            # if meta['forward']['from'] and meta['forward']['channel_post'] and self.ail:
-            #     if meta['forward']['from']['type'] == 'channel' or meta['forward']['from']['type'] == 'chat':
-            #         meta_chat = None
-            #         # ONLY Send new
-            #         if meta['forward']['from']['id'] not in self.chats:
-            #             chat_obj = await self.get_entity(meta['forward']['from']['id'], r_obj=True)
-            #             if chat_obj:
-            #                 chat_full = await self.get_chat_full(chat_obj)
-            #                 meta_chat = self._unpack_get_chat(chat_obj)
-            #                 self.update_chats_cache(meta_chat)
-            #                 if 'icon' in chat_full:
-            #                     meta_chat['icon'] = chat_full['icon']
-            #                 if 'info' in chat_full:
-            #                     meta_chat['info'] = chat_full['info']
-            #         else:
-            #             meta_chat = self.chats[meta['forward']['from']['id']]
-            #
-            #         if meta_chat:                                                       # TODO forwarded media
-            #             mess_chat = self._get_default_dict()
-            #             mess_chat['meta']['chat'] = meta_chat
-            #             mess_chat['meta']['type'] = 'chat'
-            #             mess_chat['meta']['date'] = meta['date']
-            #             if 'media' in meta:
-            #                 mess_chat['meta']['media'] = meta['media']
-            #             self.ail.feed_json_item('', mess_chat['meta'], self.source, self.source_uuid)
-            #
-            #             # mess_chat['meta']['type'] = 'message'
-            #             # mess_chat['meta']['date'] = meta['forward']['date']
+            ## GET CHAT Forwarded from meta ##
 
+            # print(type(message.forward))
+            # print(message.forward.chat)
+            # print(message.forward.sender)
+
+            # TODO Check forward flag/option
+            if message.forward.chat or message.forward.sender:  # TODO Check forward flag/option            # TODO LOGS
+
+                forward_chat = await self.get_chat_meta(chat=message.forward.chat)
+                if forward_chat:
+                    meta['forward']['chat'] = forward_chat
+
+        # -FORWARD- #
 
         if message.ttl_period:
             meta['expire'] = message.ttl_period
@@ -856,44 +887,54 @@ class TGFeeder:
             # print(message.stringify())
             # sys.exit(0)
 
-        # Message comment original chat
+        # Message comment original chat: Already Extracted in previous message
         if chat_meta:
             meta['chat'] = chat_meta
         else:
-            chat = await message.get_chat() # TODO HANDLE USER CHAT ################################################################
-            if chat:
-                if chat.id not in self.chats and not isinstance(chat, User):
-                    self.chats[chat.id] = await self.get_chat_full(chat)
+            chat = await message.get_chat()
+            meta['chat'] = await self.get_chat_meta(chat=chat)
 
-                meta['chat'] = self._unpack_get_chat(chat)
+            if 'subchannels' in meta['chat']:
+                self.get_message_subchannel(chat.id, message, meta)
 
-                if isinstance(chat, Channel):
-                    # TODO -> refresh subchannels list on watch -> get new channels creation
-                    if chat.forum:
-                        if chat.id not in self.subchannels:
-                            self.subchannels[chat.id] = await self.get_chats_topics(chat.id)
-
-                        meta['chat']['subchannels'] = list(self.subchannels[chat.id].values())
-                        # print(json.dumps(meta['chat']['subchannels']))
-
-                        # TODO USE subchannel_IDS DICT
-                        # General topic, ID = 1
-                        if 'reply_to' not in meta:
-                            # if 1 in self.subchannels[chat.id]: # TODO raise Exception
-                            meta['chat']['subchannel'] = self.subchannels[chat.id][1]
-                        elif not message.reply_to.forum_topic:
-                            # if 1 in self.subchannels[chat.id]:  # TODO raise Exception
-                            meta['chat']['subchannel'] = self.subchannels[chat.id][1]
-                        elif message.reply_to.reply_to_top_id:
-                            # if message.reply_to.reply_to_top_id in self.subchannels[chat.id]:
-                            meta['chat']['subchannel'] = self.subchannels[chat.id][message.reply_to.reply_to_top_id]
-                        else:
-                            if meta['reply_to']['message_id'] in self.subchannels[chat.id]:
-                                meta['chat']['subchannel'] = self.subchannels[chat.id][meta['reply_to']['message_id']]
-                                del meta['reply_to']
-                        if not meta['chat']['subchannel']:
-                            print(meta)
-                            sys.exit(0)  # TODO raise exception
+            # chat = await message.get_chat() # TODO HANDLE USER CHAT ################################################################
+            # if chat:
+            #     if chat.id not in self.chats and not isinstance(chat, User):
+            #         self.chats[chat.id] = await self.get_chat_full(chat)
+            #
+            #     meta['chat'] = self._unpack_get_chat(chat)
+            #
+            #     if isinstance(chat, Channel):
+            #         # TODO -> refresh subchannels list on watch -> get new channels creation
+            #         if chat.forum:
+            #             if chat.id not in self.subchannels:
+            #                 self.subchannels[chat.id] = await self.get_chats_topics(chat.id)
+            #
+            #             meta['chat']['subchannels'] = list(self.subchannels[chat.id].values())
+            #             # print(json.dumps(meta['chat']['subchannels']))
+            #
+            #             self.get_message_subchannel(chat.id, message, meta)
+            #
+            #             #####
+            #             # # TODO USE subchannel_IDS DICT
+            #             # # General topic, ID = 1
+            #             # if 'reply_to' not in meta:
+            #             #     # if 1 in self.subchannels[chat.id]: # TODO raise Exception
+            #             #     meta['chat']['subchannel'] = self.subchannels[chat.id][1]
+            #             # elif not message.reply_to.forum_topic:
+            #             #     # if 1 in self.subchannels[chat.id]:  # TODO raise Exception
+            #             #     meta['chat']['subchannel'] = self.subchannels[chat.id][1]
+            #             # elif message.reply_to.reply_to_top_id:
+            #             #     # if message.reply_to.reply_to_top_id in self.subchannels[chat.id]:
+            #             #     meta['chat']['subchannel'] = self.subchannels[chat.id][message.reply_to.reply_to_top_id]
+            #             # else:
+            #             #     if meta['reply_to']['message_id'] in self.subchannels[chat.id]:
+            #             #         meta['chat']['subchannel'] = self.subchannels[chat.id][meta['reply_to']['message_id']]
+            #             #         del meta['reply_to']
+            #             # if not meta['chat']['subchannel']:
+            #             #     print(meta)
+            #             #     sys.exit(0)  # TODO raise exception
+            #             ######
 
         sender = await message.get_sender()
         if sender:
