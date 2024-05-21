@@ -863,11 +863,14 @@ class TGFeeder:
             # print(message.forward.sender)
 
             # TODO Check forward flag/option
-            if message.forward.chat or message.forward.sender:  # TODO Check forward flag/option            # TODO LOGS
-
+            if message.forward.chat:  # TODO Check forward flag/option            # TODO LOGS
                 forward_chat = await self.get_chat_meta(chat=message.forward.chat)
                 if forward_chat:
                     meta['forward']['chat'] = forward_chat
+
+            # TODO USER MESSAGE FORWARDED
+            # if message.forward.sender:
+            #
 
         # -FORWARD- #
 
