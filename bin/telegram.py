@@ -2,6 +2,7 @@
 # -*-coding:UTF-8 -*
 
 import json
+import asyncio
 import logging
 import os
 import sys
@@ -476,7 +477,15 @@ class TGFeeder:
         meta['info'] = full_chat.about
 
         if image and full_chat.chat_photo:
-            icon = await self.client.download_profile_photo(chat, file=bytes)
+            try:
+                icon = await asyncio.wait_for(self.client.download_profile_photo(full_chat, file=bytes), 30)
+            except asyncio.exceptions.TimeoutError:
+                print('TIMEOUT')
+                try:
+                    icon = await asyncio.wait_for(self.client.download_profile_photo(full_chat, file=bytes, download_big=False), 60)
+                except asyncio.exceptions.TimeoutError:
+                    icon = None
+                    print('TIMEOUT Small photo')
             if icon:
                 meta['icon'] = base64.standard_b64encode(icon).decode()
 
@@ -519,7 +528,15 @@ class TGFeeder:
     async def get_private_chat_meta(self, chat, image=True):
         meta = self._unpack_get_chat(chat)
         if image and chat.photo:
-            icon = await self.client.download_profile_photo(chat, file=bytes)
+            try:
+                icon = await asyncio.wait_for(self.client.download_profile_photo(chat, file=bytes), 30)
+            except asyncio.exceptions.TimeoutError:
+                print('TIMEOUT')
+                try:
+                    icon = await asyncio.wait_for(self.client.download_profile_photo(chat, file=bytes, download_big=False), 60)
+                except asyncio.exceptions.TimeoutError:
+                    icon = None
+                    print('TIMEOUT Small photo')
             if icon:
                 meta['icon'] = base64.standard_b64encode(icon).decode()
         return meta
