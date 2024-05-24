@@ -254,13 +254,21 @@ class TGFeeder:
             # common_chats_count
             if user_f.profile_photo:
                 try:
-                    meta['icon'] = base64.standard_b64encode(await self.client.download_profile_photo(user, file=bytes)).decode()
+                    icon = await asyncio.wait_for(self.client.download_profile_photo(user, file=bytes), 30)
+                except asyncio.exceptions.TimeoutError:
+                    print('TIMEOUT')
+                    try:
+                        icon = await asyncio.wait_for(self.client.download_profile_photo(user, file=bytes), 30)
+                    except asyncio.exceptions.TimeoutError:
+                        icon = None
+                        print('TIMEOUT Small photo')
                 except FileIdInvalidError:
-                    print('-------------------------------------------------------')
                     print('ERROR: FileIdInvalidError')
-                    print(full)
-                    print(meta)
-                    print('-------------------------------------------------------')
+                    icon = None
+
+                if icon:
+                    meta['icon'] = base64.standard_b64encode(icon).decode()
+
             # print(user.profile_photo)
             return meta
         except ValueError as e:
@@ -533,7 +541,7 @@ class TGFeeder:
             except asyncio.exceptions.TimeoutError:
                 print('TIMEOUT')
                 try:
-                    icon = await asyncio.wait_for(self.client.download_profile_photo(chat, file=bytes, download_big=False), 60)
+                    icon = await asyncio.wait_for(self.client.download_profile_photo(chat, file=bytes, download_big=False), 40)
                 except asyncio.exceptions.TimeoutError:
                     icon = None
                     print('TIMEOUT Small photo')
@@ -869,8 +877,10 @@ class TGFeeder:
                     meta['forward']['chat'] = forward_chat
 
             # TODO USER MESSAGE FORWARDED
-            # if message.forward.sender:
-            #
+            if message.forward.sender:
+                forward_user = await self.unpack_sender(message.forward.sender)
+                if forward_user:
+                    meta['forward']['user'] = forward_user
 
         # -FORWARD- #
 
