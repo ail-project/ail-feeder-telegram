@@ -9,3 +9,4 @@ ail_feeder = True
 api_id = <api_id>
 api_hash = <api_hash>
 session_name = session_file
+extract_mentions = False

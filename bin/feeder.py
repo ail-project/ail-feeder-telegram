@@ -6,6 +6,7 @@ import configparser
 import json
 import sys
 import os
+import time
 
 from telegram import TGFeeder
 from pyail import PyAIL
@@ -60,11 +61,14 @@ try:
         telegram_api_id = config.get('TELEGRAM', 'api_id')
         telegram_api_hash = config.get('TELEGRAM', 'api_hash')
         telegram_session_name = config.get('TELEGRAM', 'session_name')
+
+        extract_mentions = config.getboolean('TELEGRAM', 'extract_mentions')
     except Exception as e:
         print('[ERROR] Check ../etc/conf.cfg to ensure the following variables have been set:\n')
         print('[TELEGRAM] api_id \n')
         print('[TELEGRAM] api_hash \n')
         print('[TELEGRAM] session_name \n')
+        print('[TELEGRAM] extract_mentions \n')
         sys.exit(0)
     # /End Check Telegram configuration
 
@@ -105,7 +109,7 @@ if __name__ == '__main__':
     get_chat_users_parser.add_argument('invite', help='invite hash to check')
 
     messages_parser = subparsers.add_parser('messages', help='Get all messages from a chat')
-    messages_parser.add_argument('chat_id', help='ID of the chat.')  # TODO NB messages
+    messages_parser.add_argument('chat_id', nargs='+', help='ID of the chat.')  # TODO NB messages
     messages_parser.add_argument('--min_id', type=int, help='minimal ID of chat messages.')
     messages_parser.add_argument('--max_id', type=int, help='maximum ID of chat messages.')
     _create_messages_subparser(messages_parser)
@@ -140,7 +144,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Start client
-    tg = TGFeeder(int(telegram_api_id), telegram_api_hash, telegram_session_name, ail_client=ail)
+    tg = TGFeeder(int(telegram_api_id), telegram_api_hash, telegram_session_name, ail_client=ail, extract_mentions=extract_mentions)
     # Connect client
     tg.connect()
 
@@ -186,7 +190,7 @@ if __name__ == '__main__':
             r = loop.run_until_complete(tg.check_invite(invite))
             _json_print(r)
         elif args.command == 'messages':
-            chat = args.chat_id
+            chats = args.chat_id
             if args.replies:
                 replies = True
             else:
@@ -225,9 +229,13 @@ if __name__ == '__main__':
                 else:
                     max_id = 0
 
-                loop.run_until_complete(tg.get_chat_messages(chat, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read, min_id=min_id, max_id=max_id))
+                for chat in chats:
+                    loop.run_until_complete(tg.get_chat_messages(chat, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read, min_id=min_id, max_id=max_id))
             else:
-                loop.run_until_complete(tg.get_chat_messages(chat, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read))
+                for chat in chats:
+                    # print('---------------')
+                    # print('Extract Messages from:', chat)
+                    loop.run_until_complete(tg.get_chat_messages(chat, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read))
 
         elif args.command == 'message':
             chat = args.chat_id

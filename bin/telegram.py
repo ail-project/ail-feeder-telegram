@@ -5,21 +5,26 @@ import json
 import asyncio
 import logging
 import os
+import re
 import sys
 import time
 import base64
 
 from datetime import datetime
 
-from libretranslatepy import LibreTranslateAPI
+from urllib.parse import urlparse
+
+# from libretranslatepy import LibreTranslateAPI
 
 from telethon import TelegramClient, events
 # from telethon import helpers
+from telethon.utils import parse_username
 
 from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelRequest, GetForumTopicsRequest, GetChannelRecommendationsRequest
 
 from telethon.tl.types import Channel, User, ChannelParticipantsAdmins, PeerUser, PeerChat, PeerChannel, ForumTopicDeleted
-# from telethon.tl.types import MessageEntityUrl, MessageEntityTextUrl, MessageEntityMention
+from telethon.tl.types import InputPeerChat, InputPeerChannel, InputPeerUser
+from telethon.tl.types import MessageEntityUrl, MessageEntityTextUrl, MessageEntityMention, MessageEntityMentionName
 from telethon.tl.types import ReactionEmoji, ReactionCustomEmoji
 from telethon.tl.types import Chat, ChatFull, ChannelFull  # ChatEmpty
 from telethon.tl.types import ChatInvite, ChatInviteAlready, ChatInvitePeek
@@ -29,7 +34,6 @@ from telethon.tl.functions.messages import GetFullChatRequest  # chat_id=-000000
 from telethon.tl.functions.channels import GetFullChannelRequest  # channel='username'
 # https://tl.telethon.dev/methods/channels/get_full_channel.html
 from telethon.tl.functions.messages import CheckChatInviteRequest, ImportChatInviteRequest
-from telethon.tl.types import MessageEntityTextUrl, MessageEntityMentionName
 from telethon.tl.functions.contacts import SearchRequest
 from telethon.tl.types.messages import ChatsSlice
 from telethon.tl.functions.chatlists import CheckChatlistInviteRequest
@@ -43,22 +47,115 @@ from telethon.errors import ChannelsTooMuchError, ChannelInvalidError, ChannelPr
 from telethon.errors import ChannelPublicGroupNaError, UserCreatorError, UserNotParticipantError, InviteHashEmptyError
 from telethon.errors import UsersTooMuchError, UserAlreadyParticipantError, SessionPasswordNeededError
 from telethon.errors import QueryTooShortError, SearchQueryEmptyError, TimeoutError
-from telethon.errors import FileIdInvalidError
+from telethon.errors import UsernameInvalidError
 # from telethon.errors.common import MultiError
 
 # import logging
 # logging.basicConfig(level=logging.DEBUG)
+
+DISABLED_USERNAME = {"addemoji", "addlist", "addstickers", "addtheme", "boost", "confirmphone", "contact",
+                     "giftcode", "invoice", "joinchat", "login", "proxy", "setlanguage", "share", "socks"} # + 'settings' + telegrampassport
+
+RE_VALID_USERNAME = re.compile(r"^[a-z](?:(?!__)\w){3,30}[a-z\d]$")
+
+def is_valid_username(username):
+    username = username.lower()
+    if RE_VALID_USERNAME.match(username):
+        if username not in DISABLED_USERNAME:
+            return username, 'username'
+    return None, None
+
+def is_valid_join_hash(invite_hash):  # TODO ######################################
+    return invite_hash, 'invite'
+
+def _parse_entity(entity):
+    entity = entity.lower()
+    # Phone + Join
+    if entity[0] == '+':
+        # Phone
+        if entity[1:].isdigit():
+            return entity, 'phone'
+        # Invite
+        if is_valid_join_hash(entity[1:]):
+            return entity, 'invite'
+    # Username
+    else:
+        return is_valid_username(entity)
+
+def parse_entity(text):
+    if text.startswith('@'):
+        return is_valid_username(text[1:])
+
+    if text.startswith("tg://") or text.startswith("tg:"):
+        if text.startswith("tg://"):
+            text = text[5:]
+        else:
+            text = text[3:]
+        text = text.split('?', 1)
+
+        # tg://user?id=<id>
+        if text[0] == "user":
+            if text[1].startswith("id="):
+                entity_id = text[1].split('&', 1)[0][3:]
+                if entity_id.isdigit():
+                    return int(entity_id), 'id'
+        # tg://join?invite=<hash>
+        # elif text[0] == "join":
+
+        # tg://openmessage
+
+        # tg://resolve?domain=<username> &thread= ...  + videochat + story + ???bot links???
+        # + ? boost ?
+
+        # tg://privatepost?channel=<channel_id>&post= ...
+
+        # tg://resolve?phone=
+        # tg://resolve?phone=<phone_number>
+
+    else:
+        if text.startswith("https://"):
+            text = text[8:]
+        elif text.startswith("http://"):
+            text = text[7:]
+
+        if 't.me' in text:  # TODO remove ? ???
+            u = text.split('.')
+            if u[1] == 't' and u[2] == 'me':
+                username = u[0]
+                return is_valid_username(username)
+
+        text = text.replace("telegram.me", "t.me")
+        text = text.replace("telegram.dog", "t.me")
+
+        text = text.split('/')
+        if text[0] == 't.me' and len(text) > 1:
+            # t.me/c/chat_id
+            if text[1] == 'c':  ### warning boost link: t.me/c/<id>?boost  # TODO remove ?
+                entity_id = text[2]
+                if entity_id.isdigit():
+                    return int(entity_id), 'id'
+            elif text[1] == 'joinchat':
+                entity = text[2].split('?', 1)[0]
+                return is_valid_join_hash(entity)
+            # t.me/username
+            else:
+                entity = text[1].split('?', 1)[0]
+                return _parse_entity(entity)
+    return None, None
+
 
 class TGFeeder:
 
     # dialog vs chats ???
 
     # ail_url ail_key ail_verifycert ail_feeder + disabled option
-    def __init__(self, tg_api_id, tg_api_hash, session_name, ail_client=None): # TODO create downloads dir
+    def __init__(self, tg_api_id, tg_api_hash, session_name, ail_client=None, extract_mentions=False): # TODO create downloads dir
         self.logger = logging.getLogger()  # TODO FORMAT LOGS
 
         self.source = 'ail_feeder_telegram'
         self.source_uuid = '9cde0855-248b-4439-b964-0495b9b2b8db'
+
+        self.extract_mentions = extract_mentions
 
         self.tg_api_id = int(tg_api_id)
         self.tg_api_hash = tg_api_hash
@@ -76,8 +173,10 @@ class TGFeeder:
 
         self.subchannels = {}
 
+        self.map_username_invite_id = {}
         self.chats = {}
         self.users = {}  # TODO ADD ID USER IF DOWNLOADED IMAGE
+        self.invalid_id = set()
         # TODO END CLEANUP
 
     def update_chats_cache(self, meta_chats):
@@ -242,13 +341,19 @@ class TGFeeder:
         except UserNotParticipantError:
             self.logger.warning(f'You are not a member of this channel: {chat}')
 
+    async def get_user_meta(self, user=None):
+        if user.id not in self.users and not isinstance(user, Chat):
+            self.users[user.id] = await self.get_user(user)
+        meta = self.users[user.id]
+        return meta
+
     async def get_user(self, user):
         # return {}
         try:
             full = await self.client(GetFullUserRequest(id=user))
             # print(full)
             user_f = full.full_user
-            meta = {'id': user_f.id}
+            meta = self._unpack_user(user)
             if user_f.about:
                 meta['info'] = user_f.about
             # common_chats_count
@@ -275,11 +380,33 @@ class TGFeeder:
             print(e)
             return {}
 
+    async def get_entity_id(self, entity):
+        try:
+            entity = await self.client.get_input_entity(entity)
+        except ValueError:
+            self.logger.error(f'Could not find the entity {entity}')
+            return None
+        except UsernameInvalidError:
+            self.logger.error(f'Could not find the username {entity}')
+            return None
+        if entity:
+            if isinstance(entity, InputPeerChat):
+                return entity.chat_id
+            elif isinstance(entity, InputPeerChannel):
+                return entity.channel_id
+            elif isinstance(entity, InputPeerUser):
+                return entity.user_id
+
     # Note: entity ID: only work if is in a dialog or in the same chat, client.get_participants(group) need to be called
     #       -
-    async def get_entity(self, entity, r_id=False, r_obj=False, similar=False, full=False, load_dialog=True):
+    async def get_entity(self, entity, entity_id=None, r_id=False, r_obj=False, similar=False, full=False, load_dialog=True):  # TODO load_dialog global
         if load_dialog:
             await self.client.get_dialogs()
+        if entity_id:
+            try:
+                entity = int(entity_id)
+            except (TypeError, ValueError):
+                pass
         try:
             entity = int(entity)
         except (TypeError, ValueError):
@@ -307,6 +434,68 @@ class TGFeeder:
             self.logger.error(f'Could not find the entity {entity}')
         except ChannelPrivateError:
             self.logger.error(f'This channel is private or this account was banned: {entity}')
+        except InviteHashExpiredError:
+            self.logger.error(f'This invitation is expired: {entity}')
+        except UsernameInvalidError: # TODO CACHE IT
+            self.logger.error(f'Could not find the username {entity}')
+
+    async def get_entity_meta(self, entity, entity_type='id'):
+        if entity_type == 'id':
+            if not entity:
+                return None
+            entity_id = entity
+            entity = None
+        else:
+            entity_id = entity.id
+            entity = entity
+
+        if entity_id in self.chats:
+            return self.chats[entity_id]
+        elif entity_id in self.users:
+            return self.users[entity_id]
+        elif entity_id in self.invalid_id:
+            return None
+        else:
+            if not entity:
+                time.sleep(1)
+                entity = await self.get_entity(None, entity_id=entity_id, r_obj=True, load_dialog=False)
+                time.sleep(3)
+            if entity:
+                if isinstance(entity, Chat) or isinstance(entity, Channel):
+                    return await self.get_chat_meta(chat=entity)
+                elif isinstance(entity, User):
+                    return await self.get_user_meta(user=entity)
+            self.invalid_id.add(entity_id)
+            return None
+
+    async def get_entity_meta_from_text(self, text):
+        entity, e_type = parse_entity(text)
+        print(text)
+        print(entity, e_type)
+        if e_type and entity:
+            if e_type == 'id':
+                return await self.get_entity_meta(entity)
+            elif e_type == 'invite' or e_type == 'username':
+                if entity in self.map_username_invite_id:
+                    return await self.get_entity_meta(self.map_username_invite_id[entity])
+                else:
+                    if e_type == 'invite':
+                        if entity.startswith('+'):
+                            text_entity = f't.me/{entity}'
+                        else:
+                            text_entity = f't.me/+{entity}'  # TODO TESSSSSSSSSSSSSTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+                    else:
+                        text_entity = entity
+                    ent = await self.get_entity(text_entity, r_obj=True, load_dialog=False)
+                    time.sleep(1)
+                    if ent:
+                        self.map_username_invite_id[entity] = ent.id
+                        print(ent)
+                        return await self.get_entity_meta(ent, entity_type='entity')
+                    else:
+                        self.map_username_invite_id[entity] = None
+                        return None
+        return None
 
     async def get_chat_users(self, chat, admin=False):
         users = []
@@ -550,26 +739,21 @@ class TGFeeder:
         return meta
 
     # Get Chat metas
-    async def get_chat_meta(self, chat=None, chat_id=None):
-        meta = {}
-        if not chat:
-            chat = await self.get_entity(chat_id, r_obj=True)
+    async def get_chat_meta(self, chat=None):
+        if chat.id not in self.chats and not isinstance(chat, User):
+            try:
+                self.chats[chat.id] = await self.get_chat_full(chat)
+            except ChannelPrivateError:
+                self.chats[chat.id] = await self.get_private_chat_meta(chat)
+        meta = self.chats[chat.id]
 
-        if chat:
-            if chat.id not in self.chats and not isinstance(chat, User):
-                try:
-                    self.chats[chat.id] = await self.get_chat_full(chat)
-                except ChannelPrivateError:
-                    self.chats[chat.id] = await self.get_private_chat_meta(chat)
-            meta = self.chats[chat.id]
-
-            if isinstance(chat, Channel):
-                # TODO -> refresh subchannels list on watch -> get new channels creation
-                if chat.forum:
-                    # Save Forum topics in CACHE
-                    if chat.id not in self.subchannels:
-                        self.subchannels[chat.id] = await self.get_chats_topics(chat.id)
-                    meta['subchannels'] = list(self.subchannels[chat.id].values())
+        if isinstance(chat, Channel):
+            # TODO -> refresh subchannels list on watch -> get new channels creation
+            if chat.forum:
+                # Save Forum topics in CACHE
+                if chat.id not in self.subchannels:
+                    self.subchannels[chat.id] = await self.get_chats_topics(chat.id)
+                meta['subchannels'] = list(self.subchannels[chat.id].values())
         return meta
 
     def get_message_subchannel(self, chat_id, message, meta):  # chat.id
@@ -677,11 +861,11 @@ class TGFeeder:
                     self.chats[sender.id] = await self.get_chat_full(sender)
                 except ChannelPrivateError:
                     self.chats[sender.id] = await self.get_private_chat_meta(sender)
-            return self._unpack_channel(sender)
+            return self.chats[sender.id]
         elif isinstance(sender, User):
             if sender.id not in self.users:
-                self.users[sender.id] = await self.get_user(sender.id)
-            return self._unpack_user(sender)
+                self.users[sender.id] = await self.get_user(sender)
+            return self.users[sender.id]
 
     # https://github.com/LonamiWebs/Telethon/blob/v1/telethon/extensions/markdown.py#L12
     def unpack_message_entities(self, message):
@@ -701,6 +885,64 @@ class TGFeeder:
         #         print(helpers.del_surrogate(text[offset:offset + length]))
         # text = helpers.del_surrogate(text)
         return text
+
+    async def get_message_mentions(self, message, chat_id):
+        mentions = {'chats': [], 'users': []}
+        to_extract = False
+        for entity in message.entities:
+            # print(entity)
+            if isinstance(entity, MessageEntityMention) or isinstance(entity, MessageEntityUrl):
+                to_extract = True
+            elif isinstance(entity, MessageEntityTextUrl):
+                meta = await self.get_entity_meta_from_text(entity.url)
+                if meta:
+                    if meta['type'] == 'user':
+                        mentions['users'].append(meta)
+                    else:
+                        mentions['chats'].append(meta)
+            elif isinstance(entity, MessageEntityMentionName):
+                # print(entity.user_id)
+                meta = await self.get_entity_meta(entity.user_id, entity_type='id')
+                if meta:
+                    if meta['type'] == 'user':
+                        mentions['users'].append(meta)
+                    else:
+                        mentions['chats'].append(meta)
+
+        # print(message.get_entities_text())
+        if to_extract:
+            for extracted in message.get_entities_text():
+                if isinstance(extracted[0], MessageEntityMention):
+                    # print('extracted: ', extracted[1])
+                    print('TO CHECK IF IS ID:', extracted[1])
+                    time.sleep(1)
+
+                    meta = await self.get_entity_meta_from_text(extracted[1])
+                    if meta:
+                        if meta['type'] == 'user':
+                            mentions['users'].append(meta)
+                        else:
+                            mentions['chats'].append(meta)
+                elif isinstance(extracted[0], MessageEntityUrl):
+                    # print(extracted[1])
+                    meta = await self.get_entity_meta_from_text(extracted[1])
+                    if meta:
+                        if meta['type'] == 'user':
+                            mentions['users'].append(meta)
+                        else:
+                            mentions['chats'].append(meta)
+        # print()
+        # print(json.dumps(mentions, indent=4))
+        # print(mentions)
+        if mentions['chats'] or mentions['users']:
+            # remove self mention
+            to_remove = None
+            for key in mentions['chats']:
+                if key['id'] == chat_id:
+                    to_remove = key
+            if to_remove:
+                mentions['chats'].remove(to_remove)
+            return mentions
 
     # poll:
     # status (open, closed)
@@ -843,47 +1085,6 @@ class TGFeeder:
         if message.views:
             meta['views'] = message.views
 
-        ## FORWARD ##
-
-        if message.forwards:  # The number of times this message has been forwarded.
-            meta['forwards'] = message.forwards
-        # https://stackoverflow.com/a/75978777
-        if message.forward:  # message.fwd_from
-            meta['forward'] = {}
-            meta['forward']['date'] = unpack_datetime(message.forward.date)
-            if message.forward.from_id:  # original channel or user ID  # TODO DIFF User/CHATS
-                meta['forward']['from'] = self._unpack_peer(message.forward.from_id)
-            if message.forward.from_name:
-                meta['forward']['from_name'] = message.forward.from_name
-            if message.forward.channel_post:  # original message ID
-                meta['forward']['channel_post'] = message.forward.channel_post
-            if message.forward.post_author:
-                meta['forward']['post_author'] = message.forward.post_author
-            if message.forward.saved_from_msg_id:  # previous source message ID
-                meta['forward']['saved_from_msg_id'] = message.forward.saved_from_msg_id
-            if message.forward.saved_from_peer:  # previous source chat/user ID
-                meta['forward']['saved_from_peer'] = self._unpack_peer(message.forward.saved_from_peer)
-
-            ## GET CHAT Forwarded from meta ##
-
-            # print(type(message.forward))
-            # print(message.forward.chat)
-            # print(message.forward.sender)
-
-            # TODO Check forward flag/option
-            if message.forward.chat:  # TODO Check forward flag/option            # TODO LOGS
-                forward_chat = await self.get_chat_meta(chat=message.forward.chat)
-                if forward_chat:
-                    meta['forward']['chat'] = forward_chat
-
-            # TODO USER MESSAGE FORWARDED
-            if message.forward.sender:
-                forward_user = await self.unpack_sender(message.forward.sender)
-                if forward_user:
-                    meta['forward']['user'] = forward_user
-
-        # -FORWARD- #
-
         if message.ttl_period:
             meta['expire'] = message.ttl_period
 
@@ -985,10 +1186,59 @@ class TGFeeder:
             if 'info' in self.chats[message_chat_id]:
                 meta['sender']['info'] = self.chats[message_chat_id]['info']
 
-        if message.entities:
-            mess_entities = self.unpack_message_entities(message)
-            if mess_entities:
-                mess['data'] = mess['data'] + '\n' + mess_entities
+        # if message.entities: # TODO ################# REMOVE ME #############################################################################
+        #     mess_entities = self.unpack_message_entities(message)
+        #     if mess_entities:
+        #         mess['data'] = mess['data'] + '\n' + mess_entities
+
+        #
+
+        ## FORWARD ##
+
+        if message.forwards:  # The number of times this message has been forwarded.
+            meta['forwards'] = message.forwards
+        # https://stackoverflow.com/a/75978777
+        if message.forward:  # message.fwd_from
+            meta['forward'] = {}
+            meta['forward']['date'] = unpack_datetime(message.forward.date)
+            if message.forward.from_id:  # original channel or user ID  # TODO DIFF User/CHATS
+                meta['forward']['from'] = self._unpack_peer(message.forward.from_id)
+            if message.forward.from_name:
+                meta['forward']['from_name'] = message.forward.from_name
+            if message.forward.channel_post:  # original message ID
+                meta['forward']['channel_post'] = message.forward.channel_post
+            if message.forward.post_author:
+                meta['forward']['post_author'] = message.forward.post_author
+            if message.forward.saved_from_msg_id:  # previous source message ID
+                meta['forward']['saved_from_msg_id'] = message.forward.saved_from_msg_id
+            if message.forward.saved_from_peer:  # previous source chat/user ID
+                meta['forward']['saved_from_peer'] = self._unpack_peer(message.forward.saved_from_peer)
+
+            ## GET CHAT Forwarded from meta ##
+
+            # print(type(message.forward))
+            # print(message.forward.chat)
+            # print(message.forward.sender)
+
+            # TODO Check forward flag/option
+            if message.forward.chat:  # TODO Check forward flag/option            # TODO LOGS
+                forward_chat = await self.get_chat_meta(chat=message.forward.chat)
+                if forward_chat:
+                    meta['forward']['chat'] = forward_chat
+            #
+            # # TODO USER MESSAGE FORWARDED
+            if message.forward.sender:
+                forward_user = await self.unpack_sender(message.forward.sender)
+                if forward_user:
+                    meta['forward']['user'] = forward_user
+
+        # -FORWARD- #
+
+        # MENTIONS #
+        elif message.entities and self.extract_mentions:
+            mentions = await self.get_message_mentions(message, meta['chat']['id'])
+            if mentions:
+                meta['mentions'] = mentions
 
         if message.reactions:
             meta['reactions'] = []
@@ -1112,7 +1362,7 @@ def callback_download(current, total):
 
 
 # message.entities
-### BEGIN - MESSAGE ENTITY ###
+### BEGIN - MESSAGE ENTITY ###  UTF 16 code-unit
 # def _get_entity_str(data, entity):
 #     entity_start = entity.offset
 #     entity_stop = entity.offset + entity.length
@@ -1145,6 +1395,7 @@ def callback_download(current, total):
 #     # MessageEntityEmail
 #     # MessageEntityPhone ?
 #     # MessageEntityCode ???
+
 ### --- END - MESSAGE ENTITY ---###
 
 # TODO SAVE JSON OPTION
@@ -1155,3 +1406,6 @@ def callback_download(current, total):
 # TODO + AIL if plus == invite
 
 # if __name__ == '__main__':
+#     t = ''
+#     r = parse_entity(t)
+#     print(r)
