@@ -1,9 +1,14 @@
 [AIL]
 feeder_uuid = aae656ec-d446-4a21-acf0-c88d4e09d506
+ail_feeder = True
+
 url = https://127.0.0.1:7000
 apikey = <YOURAPIKEY>
 verifycert = False
-ail_feeder = True
+
+#url2 = https://127.0.0.1:7020
+#apikey2 = <YOURAPIKEY2>
+#verifycert2 = False
 
 [TELEGRAM]
 api_id = <api_id>

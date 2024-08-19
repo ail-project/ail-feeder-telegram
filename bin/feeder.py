@@ -26,13 +26,29 @@ try:
         print('[ERROR] The [AIL] section was not defined within conf.cfg. Ensure conf.cfg contents are correct.')
         sys.exit(0)
 
+    ail_conf = {}
+    AIL = []
+
     try:
         # Set variables required for the Telegram Feeder
         feeder_uuid = config.get('AIL', 'feeder_uuid')
-        ail_url = config.get('AIL', 'url')
-        ail_key = config.get('AIL', 'apikey')
-        ail_verifycert = config.getboolean('AIL', 'verifycert')
         ail_feeder = config.getboolean('AIL', 'ail_feeder')
+
+        if config.has_option('AIL', 'url'):
+            ail_url = config.get('AIL', 'url')
+            ail_key = config.get('AIL', 'apikey')
+            ail_verifycert = config.getboolean('AIL', 'verifycert')
+            ail_conf[ail_url] = {'api': ail_key, 'verifycert': ail_verifycert}
+
+        for i in range(2, 11):
+            if config.has_option('AIL', f'url{i}'):
+                ail_url = config.get('AIL', f'url{i}')
+                ail_key = config.get('AIL', f'apikey{i}')
+                ail_verifycert = config.getboolean('AIL', f'verifycert{i}')
+                ail_conf[ail_url] = {'api': ail_key, 'verifycert': ail_verifycert}
+            else:
+                break
+
     except Exception as e:
         print(e)
         print('[ERROR] Check ../etc/conf.cfg to ensure the following variables have been set:\n')
@@ -42,11 +58,13 @@ try:
         sys.exit(0)
 
     if ail_feeder:
-        try:
-            ail = PyAIL(ail_url, ail_key, ssl=ail_verifycert)
-        except Exception as e:
-            print('[ERROR] Unable to connect to AIL Framework API. Please check [AIL] url, apikey and verifycert in ../etc/conf.cfg.\n')
-            sys.exit(0)
+        for url in ail_conf:
+            try:
+                ail = PyAIL(ail_url, ail_key, ssl=ail_verifycert)
+            except Exception as e:
+                print('[ERROR] Unable to connect to AIL Framework API. Please check [AIL] url, apikey and verifycert in ../etc/conf.cfg.\n')
+                sys.exit(0)
+            AIL.append(ail)
     else:
         # print('[INFO] AIL Feeder has not been enabled in [AIL] ail_feeder. Feeder script will not send output to AIL.\n')
         ail = None
@@ -144,7 +162,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Start client
-    tg = TGFeeder(int(telegram_api_id), telegram_api_hash, telegram_session_name, ail_client=ail, extract_mentions=extract_mentions)
+    tg = TGFeeder(int(telegram_api_id), telegram_api_hash, telegram_session_name, ail_clients=AIL, extract_mentions=extract_mentions)
     # Connect client
     tg.connect()
 

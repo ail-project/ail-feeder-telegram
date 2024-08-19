@@ -149,7 +149,7 @@ class TGFeeder:
     # dialog vs chats ???
 
     # ail_url ail_key ail_verifycert ail_feeder + disabled option
-    def __init__(self, tg_api_id, tg_api_hash, session_name, ail_client=None, extract_mentions=False): # TODO create downloads dir
+    def __init__(self, tg_api_id, tg_api_hash, session_name, ail_clients=None, extract_mentions=False): # TODO create downloads dir
         self.logger = logging.getLogger()  # TODO FORMAT LOGS
 
         self.source = 'ail_feeder_telegram'
@@ -164,10 +164,10 @@ class TGFeeder:
         self.client = self.get_client()
         self.loop = self.client.loop
 
-        if ail_client:
-            self.ail = ail_client
+        if ail_clients:
+            self.ails = ail_clients
         else:
-            self.ail = None
+            self.ails = None
 
         # self.lt = LibreTranslateAPI("http://localhost:5000")
 
@@ -178,6 +178,10 @@ class TGFeeder:
         self.users = {}  # TODO ADD ID USER IF DOWNLOADED IMAGE
         self.invalid_id = set()
         # TODO END CLEANUP
+
+    def send_to_ail(self, data, meta):
+        for ail in self.ails:
+            ail.feed_json_item(data, meta, self.source, self.source_uuid)
 
     def update_chats_cache(self, meta_chats):
         chat_id = meta_chats['id']
@@ -740,20 +744,23 @@ class TGFeeder:
 
     # Get Chat metas
     async def get_chat_meta(self, chat=None):
-        if chat.id not in self.chats and not isinstance(chat, User):
-            try:
-                self.chats[chat.id] = await self.get_chat_full(chat)
-            except ChannelPrivateError:
-                self.chats[chat.id] = await self.get_private_chat_meta(chat)
-        meta = self.chats[chat.id]
+        if isinstance(chat, User):
+            meta = await self.get_user_meta(chat)
+        else:
+            if chat.id not in self.chats:
+                try:
+                    self.chats[chat.id] = await self.get_chat_full(chat)
+                except ChannelPrivateError:
+                    self.chats[chat.id] = await self.get_private_chat_meta(chat)
+            meta = self.chats[chat.id]
 
-        if isinstance(chat, Channel):
-            # TODO -> refresh subchannels list on watch -> get new channels creation
-            if chat.forum:
-                # Save Forum topics in CACHE
-                if chat.id not in self.subchannels:
-                    self.subchannels[chat.id] = await self.get_chats_topics(chat.id)
-                meta['subchannels'] = list(self.subchannels[chat.id].values())
+            if isinstance(chat, Channel):
+                # TODO -> refresh subchannels list on watch -> get new channels creation
+                if chat.forum:
+                    # Save Forum topics in CACHE
+                    if chat.id not in self.subchannels:
+                        self.subchannels[chat.id] = await self.get_chats_topics(chat.id)
+                    meta['subchannels'] = list(self.subchannels[chat.id].values())
         return meta
 
     def get_message_subchannel(self, chat_id, message, meta):  # chat.id
@@ -1032,8 +1039,8 @@ class TGFeeder:
                     obj_media_meta['meta']['type'] = 'image'
 
                     # obj_media_meta['data'] = media_content  # TODO ##################################################
-                    if self.ail:
-                        self.ail.feed_json_item(media_content, obj_media_meta['meta'], self.source, self.source_uuid)
+                    if self.ails:
+                        self.send_to_ail(media_content, obj_media_meta['meta'])
                     # print(json.dumps(obj_media_meta, indent=4, sort_keys=True))
 
             if save_dir:  # TODO GET FILE HASH
@@ -1256,9 +1263,9 @@ class TGFeeder:
         if mark_read:
             await message.mark_read()
 
-        if self.ail and mess['data']:
+        if self.ails and mess['data']:
             mess['meta']['type'] = 'message'
-            self.ail.feed_json_item(mess['data'], mess['meta'], self.source, self.source_uuid)
+            self.send_to_ail(mess['data'], mess['meta'])
 
         # print(mess)
         # print(json.dumps(mess, indent=4, sort_keys=True))
