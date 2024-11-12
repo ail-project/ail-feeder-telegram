@@ -544,6 +544,8 @@ class TGFeeder:
         chat_topic = {}
         for topic in topics.topics:
             chat_topic[topic.id] = self._unpack_forum_topic(topic)
+        if 1 not in chat_topic:
+            chat_topic[1] = {'id': 1, 'date': self.chats[chat]['date'], 'name': 'General'}
         return chat_topic
 
     async def get_chat_recommendations(self, chat):
