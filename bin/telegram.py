@@ -24,7 +24,7 @@ from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelReque
 
 from telethon.tl.types import Channel, User, ChannelParticipantsAdmins, PeerUser, PeerChat, PeerChannel, ForumTopicDeleted
 from telethon.tl.types import InputPeerChat, InputPeerChannel, InputPeerUser
-from telethon.tl.types import MessageEntityUrl, MessageEntityTextUrl, MessageEntityMention, MessageEntityMentionName
+from telethon.tl.types import MessageEntityUrl, MessageEntityTextUrl, MessageEntityMention, MessageEntityMentionName, MessageService
 from telethon.tl.types import ReactionEmoji, ReactionCustomEmoji
 from telethon.tl.types import Chat, ChatFull, ChannelFull  # ChatEmpty
 from telethon.tl.types import ChatInvite, ChatInviteAlready, ChatInvitePeek
@@ -1132,7 +1132,7 @@ class TGFeeder:
             chat = await message.get_chat()
             meta['chat'] = await self.get_chat_meta(chat=chat)
 
-            if 'subchannels' in meta['chat']:
+            if 'subchannels' in meta['chat'] and not isinstance(message, MessageService):
                 self.get_message_subchannel(chat.id, message, meta)
 
             # chat = await message.get_chat() # TODO HANDLE USER CHAT ################################################################
