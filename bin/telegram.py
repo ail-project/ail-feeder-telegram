@@ -997,7 +997,7 @@ class TGFeeder:
         meta = {}
         file = message.file
         if file:
-            meta['id'] = file.id
+            # meta['id'] = file.id
             name = file.name
             if name:  ####
                 meta['name'] = name
@@ -1041,7 +1041,7 @@ class TGFeeder:
                 if tm_type == 'text':
                     if tm_subtype in DOWNLOAD_MIMETYPES:
                         media_content = await self._download_media(message)
-                        print(media_content)
+                        # print(media_content)
                         if media_content:
                             # Check File Mimetype
                             mimetype = _get_file_mimetype(media_content)
