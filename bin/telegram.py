@@ -1035,7 +1035,11 @@ class TGFeeder:
 
         if download and message.file:
             t_mime_type = obj_json['meta']['media'].get('mime_type')
-            tm_type, tm_subtype = t_mime_type.split('/')
+            if t_mime_type:
+                tm_type, tm_subtype = t_mime_type.split('/')
+            else:
+                tm_type = None
+                tm_subtype = None
             # TODO verify real mimetype -> video as image
             if message.file.size < 10000000:
                 if tm_type == 'text':
