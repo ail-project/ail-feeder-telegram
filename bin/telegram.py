@@ -4,6 +4,7 @@
 import json
 import asyncio
 import logging
+import magic
 import os
 import re
 import sys
@@ -57,6 +58,11 @@ DISABLED_USERNAME = {"addemoji", "addlist", "addstickers", "addtheme", "boost", 
                      "giftcode", "invoice", "joinchat", "login", "proxy", "setlanguage", "share", "socks"} # + 'settings' + telegrampassport
 
 RE_VALID_USERNAME = re.compile(r"^[a-z](?:(?!__)\w){3,30}[a-z\d]$")
+
+DOWNLOAD_MIMETYPES = {'csv', 'plain', 'html'}
+
+def _get_file_mimetype(content):
+    return magic.from_buffer(content, mime=True)
 
 def is_valid_username(username):
     username = username.lower()
@@ -991,8 +997,7 @@ class TGFeeder:
         meta = {}
         file = message.file
         if file:
-            print(file)
-            print(file.name)
+            meta['id'] = file.id
             name = file.name
             if name:  ####
                 meta['name'] = name
@@ -1017,38 +1022,56 @@ class TGFeeder:
             meta = self._unpack_poll(poll)
         return meta
 
-    async def get_media(self, obj_json, message, download=False, save_dir=''):  # save_dir='downloads' # TODO save dir + size limit
+    async def _download_media(self, message):
+        try:
+            media_content = await message.download_media(file=bytes, progress_callback=callback_download)
+        except ValueError as e:
+            print(e)
+            media_content = None
+        return media_content
+
+    async def get_media(self, obj_json, message, download=False, save_dir=''):  # TODO save dir + size limit
         # file: photo + document (audio + gif + sticker + video + video_note + voice)
 
-        # if obj_json['meta']['media'].get('name') and self.ail:
-        #     print('----------------------------------------------------------------------------')
-        #     obj_json['meta']['type'] = 'message'
-        #     self.ail.feed_json_item('', obj_json['meta'], self.source, self.source_uuid)
-        #     print(json.dumps(obj_json, indent=4, sort_keys=True))
-
         if download and message.file:
-            if obj_json['meta']['media'].get('mime_type', 'None_mime')[:5] == 'image' and message.file.size < 100000000:
-                try:
-                    media_content = await message.download_media(file=bytes, progress_callback=callback_download)
-                except ValueError as e:
-                    print(e)
-                    media_content = None
+            t_mime_type = obj_json['meta']['media'].get('mime_type')
+            tm_type, tm_subtype = t_mime_type.split('/')
+            # TODO verify real mimetype -> video as image
+            if message.file.size < 10000000:
+                if tm_type == 'text':
+                    if tm_subtype in DOWNLOAD_MIMETYPES:
+                        media_content = await self._download_media(message)
+                        print(media_content)
+                        if media_content:
+                            # Check File Mimetype
+                            mimetype = _get_file_mimetype(media_content)
+                            m_type, m_subtype = mimetype.split('/')
+                            if m_type == 'text':
+                                if m_subtype in DOWNLOAD_MIMETYPES:
+                                    obj_media_meta = dict(obj_json)
+                                    obj_media_meta['meta']['type'] = 'text'
 
-                if media_content:
-                    # # TODO CHECK IF EMPTY MESS DATA ????
-                    obj_media_meta = dict(obj_json)
-                    # obj_media_meta['type'] = 'image'
-                    obj_media_meta['meta']['type'] = 'image'
+                                    if self.ails:
+                                        self.send_to_ail(media_content, obj_media_meta['meta'])
+                                    # print(json.dumps(obj_media_meta, indent=4, sort_keys=True))
 
-                    # obj_media_meta['data'] = media_content  # TODO ##################################################
-                    if self.ails:
-                        self.send_to_ail(media_content, obj_media_meta['meta'])
-                    # print(json.dumps(obj_media_meta, indent=4, sort_keys=True))
+                elif tm_type == 'image':
+                    media_content = self._download_media(message)
+                    if media_content:
+                        # Check File Mimetype
+                        mimetype = _get_file_mimetype(media_content)
+                        m_type, m_subtype = mimetype.split('/')
+                        if m_type == 'image':
+                            obj_media_meta = dict(obj_json)
+                            obj_media_meta['meta']['type'] = 'image'
+
+                            if self.ails:
+                                self.send_to_ail(media_content, obj_media_meta['meta'])
+                            # print(json.dumps(obj_media_meta, indent=4, sort_keys=True))
 
             if save_dir:  # TODO GET FILE HASH
                 if not os.path.exists(save_dir):
                     os.makedirs(save_dir)
-                # TODO Create save dir if don't exists
                 media_content = await message.download_media(file=save_dir, progress_callback=callback_download)
                 # print(meta)
 

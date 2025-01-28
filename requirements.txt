@@ -1,4 +1,5 @@
+cryptg
 libretranslatepy
 pyail
+python-magic
 telethon
-cryptg
