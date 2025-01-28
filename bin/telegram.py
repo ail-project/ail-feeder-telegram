@@ -48,7 +48,7 @@ from telethon.errors import ChannelsTooMuchError, ChannelInvalidError, ChannelPr
 from telethon.errors import ChannelPublicGroupNaError, UserCreatorError, UserNotParticipantError, InviteHashEmptyError
 from telethon.errors import UsersTooMuchError, UserAlreadyParticipantError, SessionPasswordNeededError
 from telethon.errors import QueryTooShortError, SearchQueryEmptyError, TimeoutError
-from telethon.errors import UsernameInvalidError
+from telethon.errors import UsernameInvalidError, FileIdInvalidError
 # from telethon.errors.common import MultiError
 
 # import logging
