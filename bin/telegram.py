@@ -1056,7 +1056,7 @@ class TGFeeder:
                                     # print(json.dumps(obj_media_meta, indent=4, sort_keys=True))
 
                 elif tm_type == 'image':
-                    media_content = self._download_media(message)
+                    media_content = await self._download_media(message)
                     if media_content:
                         # Check File Mimetype
                         mimetype = _get_file_mimetype(media_content)
