@@ -59,7 +59,7 @@ DISABLED_USERNAME = {"addemoji", "addlist", "addstickers", "addtheme", "boost", 
 
 RE_VALID_USERNAME = re.compile(r"^[a-z](?:(?!__)\w){3,30}[a-z\d]$")
 
-DOWNLOAD_MIMETYPES = {'csv', 'plain', 'html'}
+DOWNLOAD_MIMETYPES = {'application': {'csv', 'json'}, 'text': {'csv', 'plain', 'html'}}
 
 def _get_file_mimetype(content):
     return magic.from_buffer(content, mime=True)
@@ -1040,18 +1040,19 @@ class TGFeeder:
             else:
                 tm_type = None
                 tm_subtype = None
-            # TODO verify real mimetype -> video as image
+            # TODO verify real mimetype -> none mimetype
             if message.file.size < 10000000:
-                if tm_type == 'text':
-                    if tm_subtype in DOWNLOAD_MIMETYPES:
+                if tm_type == 'application' or tm_type == 'text':
+                    if tm_subtype in DOWNLOAD_MIMETYPES[tm_type]:
                         media_content = await self._download_media(message)
                         # print(media_content)
                         if media_content:
                             # Check File Mimetype
                             mimetype = _get_file_mimetype(media_content)
+                            # print(mimetype)
                             m_type, m_subtype = mimetype.split('/')
-                            if m_type == 'text':
-                                if m_subtype in DOWNLOAD_MIMETYPES:
+                            if m_type == 'application' or m_type == 'text':
+                                if m_subtype in DOWNLOAD_MIMETYPES[m_type]:
                                     obj_media_meta = dict(obj_json)
                                     obj_media_meta['meta']['type'] = 'text'
 
