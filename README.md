@@ -14,6 +14,11 @@ External telegram feeder for AIL framework (with an automated user account)
 pip3 install -U -r requirements.txt
 ```
 
+- Install libmagic:
+```bash
+sudo apt-get install libmagic1
+```
+
 - Copy config file:
 ```bash
 cp etc/conf.cfg.sample etc/conf.cfg

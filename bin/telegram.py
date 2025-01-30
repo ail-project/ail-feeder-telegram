@@ -1048,8 +1048,11 @@ class TGFeeder:
                         # print(media_content)
                         if media_content:
                             # Check File Mimetype
-                            mimetype = _get_file_mimetype(media_content)
-                            # print(mimetype)
+                            if t_mime_type == 'text/plain' and len(media_content) > 100:
+                                mimetype = _get_file_mimetype(media_content[:100])
+                            else:
+                                mimetype = _get_file_mimetype(media_content)
+                            # print(t_mime_type, mimetype)
                             m_type, m_subtype = mimetype.split('/')
                             if m_type == 'application' or m_type == 'text':
                                 if m_subtype in DOWNLOAD_MIMETYPES[m_type]:
