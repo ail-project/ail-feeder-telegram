@@ -185,6 +185,7 @@ if __name__ == '__main__':
         if args.command == 'chats':
             r = loop.run_until_complete(tg.get_chats())
             _json_print(r)
+            tg.client.disconnect()
         elif args.command == 'join':
             if not args.name and not args.invite:
                 join_chat_parser.print_help()
@@ -199,14 +200,17 @@ if __name__ == '__main__':
                 invite = None
             r = loop.run_until_complete(tg.join_chat(chat=chat, invite=invite))
             _json_print(r)
+            tg.client.disconnect()
         elif args.command == 'leave':
             chat = args.chat_id
             r = loop.run_until_complete(tg.leave_chat(chat=chat))
             _json_print(r)
+            tg.client.disconnect()
         elif args.command == 'check':
             invite = args.invite
             r = loop.run_until_complete(tg.check_invite(invite))
             _json_print(r)
+            tg.client.disconnect()
         elif args.command == 'messages':
             chats = args.chat_id
             if args.replies:
@@ -248,12 +252,18 @@ if __name__ == '__main__':
                     max_id = 0
 
                 for chat in chats:
-                    loop.run_until_complete(tg.get_chat_messages(chat, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read, min_id=min_id, max_id=max_id))
+                    try:
+                        loop.run_until_complete(tg.get_chat_messages(chat, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read, min_id=min_id, max_id=max_id))
+                    except:
+                        tg.client.disconnect()
             else:
                 for chat in chats:
                     # print('---------------')
                     # print('Extract Messages from:', chat)
-                    loop.run_until_complete(tg.get_chat_messages(chat, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read))
+                    try:
+                        loop.run_until_complete(tg.get_chat_messages(chat, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read))
+                    except:
+                        tg.client.disconnect()
 
         elif args.command == 'message':
             chat = args.chat_id
@@ -287,7 +297,11 @@ if __name__ == '__main__':
                 save_dir = args.save_dir
             else:
                 save_dir = ''
-            loop.run_until_complete(tg.get_chat_messages(chat, min_id=min_id, max_id=max_id, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read))
+            try:
+                loop.run_until_complete(tg.get_chat_messages(chat, min_id=min_id, max_id=max_id, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read))
+            except:
+                tg.client.disconnect()
+
         elif args.command == 'unread':
             if args.replies:
                 replies = True
@@ -302,6 +316,7 @@ if __name__ == '__main__':
             else:
                 save_dir = ''
             loop.run_until_complete(tg.get_unread_message(download=download, save_dir=save_dir, replies=replies))
+            tg.client.disconnect()
         elif args.command == 'chat':
             chat = args.chat_id
             if args.similar:
@@ -316,16 +331,20 @@ if __name__ == '__main__':
                 r = loop.run_until_complete(tg.get_chat_users(chat, admin=admin))
                 if r:
                     _json_print(r)
+                tg.client.disconnect()
             else:
                 r = loop.run_until_complete(tg.get_entity(chat, similar=similar, full=True))
                 _json_print(r)
+                tg.client.disconnect()
         elif args.command == 'entity':
             entity = args.entity_name
             r = loop.run_until_complete(tg.get_entity(entity))
             _json_print(r)
+            tg.client.disconnect()
         elif args.command == 'search':
             to_search = args.to_search
             r = loop.run_until_complete(tg.search_contact(to_search))
             _json_print(r)
+            tg.client.disconnect()
         else:
             parser.print_help()

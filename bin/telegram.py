@@ -1330,11 +1330,14 @@ class TGFeeder:
     async def get_chat_messages(self, chat, download=False, save_dir=None, replies=False, min_id=0, max_id=0, limit=None, mark_read=False):
         chat = await self.get_entity(chat, r_id=True)
         if not chat:
-            sys.exit(0)
-        async for message in self.client.iter_messages(chat, min_id=min_id, max_id=max_id, filter=None, limit=limit):
-            # print(message)
-            # print()
-            mess = await self._process_message(message, replies=replies, mark_read=mark_read, download=download, save_dir=save_dir)
+            pending = asyncio.all_tasks(self.client.loop)
+            for task in pending:
+                task.cancel()
+        else:
+            async for message in self.client.iter_messages(chat, min_id=min_id, max_id=max_id, filter=None, limit=limit):
+                # print(message)
+                # print()
+                mess = await self._process_message(message, replies=replies, mark_read=mark_read, download=download, save_dir=save_dir)
 
     async def get_unread_message(self, download=False, save_dir=None, replies=False):
         async for dialog in self.client.iter_dialogs():
