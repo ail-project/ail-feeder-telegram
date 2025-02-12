@@ -1328,13 +1328,9 @@ class TGFeeder:
             await self._process_message(message, chat_meta=chat_meta, parent_message_id=message_id)
 
     async def get_chat_messages(self, chat, download=False, save_dir=None, replies=False, min_id=0, max_id=0, limit=None, mark_read=False):
-        messages = []
-        # min_id = 1
-        # max_id = 5
-        # min_id = 171177
-        # max_id = 171179
-        # download = True
         chat = await self.get_entity(chat, r_id=True)
+        if not chat:
+            sys.exit(0)
         async for message in self.client.iter_messages(chat, min_id=min_id, max_id=max_id, filter=None, limit=limit):
             # print(message)
             # print()
