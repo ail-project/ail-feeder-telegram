@@ -26,7 +26,7 @@ from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelReque
 from telethon.tl.types import Channel, User, ChannelParticipantsAdmins, PeerUser, PeerChat, PeerChannel, ForumTopicDeleted
 from telethon.tl.types import InputPeerChat, InputPeerChannel, InputPeerUser
 from telethon.tl.types import MessageEntityUrl, MessageEntityTextUrl, MessageEntityMention, MessageEntityMentionName, MessageService
-from telethon.tl.types import ReactionEmoji, ReactionCustomEmoji
+from telethon.tl.types import ReactionEmoji, ReactionCustomEmoji, ReactionPaid
 from telethon.tl.types import Chat, ChatFull, ChannelFull  # ChatEmpty
 from telethon.tl.types import ChatInvite, ChatInviteAlready, ChatInvitePeek
 from telethon.tl.functions.users import GetFullUserRequest  # https://tl.telethon.dev/constructors/users/user_full.html
@@ -1290,6 +1290,9 @@ class TGFeeder:
                     reaction = reaction.emoticon
                 elif isinstance(reaction, ReactionCustomEmoji):  # Fetch custom emoji ???
                     reaction = reaction.document_id
+                elif isinstance(reaction, ReactionPaid):
+                    reaction = '💳⭐'
+                # TODO LOG ERROR unknown reactions
                 meta['reactions'].append({'reaction': reaction, 'count': reaction_count.count})
 
         # mark as read
