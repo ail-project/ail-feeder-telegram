@@ -26,6 +26,8 @@ cp etc/conf.cfg.sample etc/conf.cfg
 
 ## Configuration
 
+### Telegram
+
 Add your telegram account in `etc/conf.cfg`:
   - Login in with your [telegram phone number](https://my.telegram.org/auth)
   - Click under API Development tools.
@@ -38,6 +40,10 @@ Add your telegram account in `etc/conf.cfg`:
  :warning: **Telegram API hash is secret and can't be revoked** :warning:  
 You can use this API ID and hash with any phone number or even for bot accounts
 
+### AIL
+
+- Add your AIL **URL** and **API key** in `etc/conf.cfg` to push messages to AIL
+- Sending Message to AIL is optional
 
 ## Usage
 
