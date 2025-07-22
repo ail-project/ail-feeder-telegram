@@ -1299,9 +1299,13 @@ class TGFeeder:
         if mark_read:
             await message.mark_read()
 
-        if self.ails and mess['data']:
-            mess['meta']['type'] = 'message'
-            self.send_to_ail(mess['data'], mess['meta'])
+        if self.ails:
+            if mess['data'] or meta.get('media'):
+                mess['meta']['type'] = 'message'
+                print()
+                print(mess['data'])
+                print()
+                self.send_to_ail(mess['data'], mess['meta'])
 
         # print(mess)
         # print(json.dumps(mess, indent=4, sort_keys=True))
