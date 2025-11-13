@@ -11,9 +11,11 @@ import sys
 import time
 import base64
 
-from datetime import datetime
+import subprocess
 
-from urllib.parse import urlparse
+from datetime import datetime
+from hashlib import sha256
+from uuid import uuid4
 
 # from libretranslatepy import LibreTranslateAPI
 
@@ -59,10 +61,83 @@ DISABLED_USERNAME = {"addemoji", "addlist", "addstickers", "addtheme", "boost", 
 
 RE_VALID_USERNAME = re.compile(r"^[a-z](?:(?!__)\w){3,30}[a-z\d]$")
 
-DOWNLOAD_MIMETYPES = {'application': {'csv', 'json'}, 'text': {'csv', 'plain', 'html'}}
+DOWNLOAD_MIMETYPES = {'application': {'csv', 'json', 'pdf'}, 'text': {'csv', 'plain', 'html'}}
 
 def _get_file_mimetype(content):
     return magic.from_buffer(content, mime=True)
+
+def extract_file_metadata(file):
+    process = subprocess.run(['exiftool', file], stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+    if process.returncode == 0:
+        exif = {}
+        for line in process.stdout.decode().split('\n'):
+            if line:
+                name, value = line.split(':', 1)
+                exif[name.strip()] = value.strip()
+        return exif
+    else:
+        print(process.stderr.decode())
+
+def delete_file_metadata(file):
+    process = subprocess.run(['exiftool', '-overwrite_original', '-all=', file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if process.returncode == 0:
+        print(process.stdout.decode())
+    else:
+        print(process.stderr.decode())
+    process = subprocess.run(['qpdf', '--linearize', '--replace-input', file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if process.returncode == 0:
+        print(process.stdout.decode())
+    else:
+        print(process.stderr.decode())
+
+
+def convert_pdf_to_pdfa(content):
+    name = uuid4()
+    pdf_file = f'/tmp/{name}.pdf'
+    print(pdf_file)
+    with open(pdf_file, 'wb') as f:
+        f.write(content)
+
+    file_metadata = extract_file_metadata(pdf_file)
+    delete_file_metadata(pdf_file)
+
+    process = subprocess.run(['gs', '-dQUIET', '-sstdout=/dev/null',
+                              '-dBATCH', '-dNOPAUSE', '-dNOOUTERSAVE',
+                              '-dCompatibilityLevel=1.4',
+                              '-dEmbedAllFonts=true', '-dSubsetFonts=true',
+                              '-dCompressFonts=true', '-dCompressPages=true',
+                              '-sColorConversionStrategy=UseDeviceIndependentColor',
+                              '-dDownsampleMonoImages=false', '-dDownsampleGrayImages=false', '-dDownsampleColorImages=false',
+                              '-dAutoFilterColorImages=false', '-dAutoFilterGrayImages=false',
+                              '-sDEVICE=pdfwrite',
+                              f'-sOutputFile=/tmp/conv_{name}', pdf_file
+                              ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if process.returncode == 0:
+        print(process.stdout.decode())
+    else:
+        print(process.stderr.decode())
+
+    process = subprocess.run(['gs', '-dQUIET', '-sstdout=/dev/null',
+                              '-dPDFA=2', '-dBATCH', '-dNOPAUSE', '-dNOOUTERSAVE',
+                              '-dCompatibilityLevel=1.4', '-dPDFACompatibilityPolicy=1',
+                              '-sColorConversionStrategy=UseDeviceIndependentColor',
+                              '-sDEVICE=pdfwrite',
+                              f'-sOutputFile=/tmp/{name}_pdfa.pdf', f'/tmp/conv_{name}', 'PDFA_def.ps',
+                              ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if process.returncode == 0:
+        print(process.stdout.decode())
+        with open(f'/tmp/{name}_pdfa.pdf', 'rb') as f:
+            content = f.read()
+
+        # cleanup
+        os.remove(pdf_file)
+        os.remove(f'/tmp/conv_{name}')
+        os.remove(f'/tmp/{name}_pdfa.pdf')
+        return content
+    else:
+        print(process.stderr.decode())
+
 
 def is_valid_username(username):
     username = username.lower()
@@ -185,9 +260,9 @@ class TGFeeder:
         self.invalid_id = set()
         # TODO END CLEANUP
 
-    def send_to_ail(self, data, meta):
+    def send_to_ail(self, data, meta, data_sha256=None):
         for ail in self.ails:
-            ail.feed_json_item(data, meta, self.source, self.source_uuid)
+            ail.feed_json_item(data, meta, self.source, self.source_uuid, data_sha256=data_sha256)
 
     def update_chats_cache(self, meta_chats):
         chat_id = meta_chats['id']
@@ -363,6 +438,12 @@ class TGFeeder:
             full = await self.client(GetFullUserRequest(id=user))
             # print(full)
             user_f = full.full_user
+            # birthday
+            # personal_channel_id
+            # ttl_period
+            # print(user_f.birthday)
+            # print(user_f.personal_channel_id)
+            # print(user_f.ttl_period)
             meta = self._unpack_user(user)
             if user_f.about:
                 meta['info'] = user_f.about
@@ -423,6 +504,7 @@ class TGFeeder:
             pass
         try:
             r_ob = await self.client.get_entity(entity)
+            # print(r_ob)
             if r_obj:
                 return r_ob
 
@@ -1041,27 +1123,46 @@ class TGFeeder:
                 tm_type = None
                 tm_subtype = None
             # TODO verify real mimetype -> none mimetype
-            if message.file.size < 10000000:
+            if message.file.size < 50000000:  # bytes   # TODO UP TO 50 MB ???
                 if tm_type == 'application' or tm_type == 'text':
                     if tm_subtype in DOWNLOAD_MIMETYPES[tm_type]:
+                        # TODO LIMIT PDF SIZE
                         media_content = await self._download_media(message)
                         # print(media_content)
                         if media_content:
-                            # Check File Mimetype
-                            if t_mime_type == 'text/plain' and len(media_content) > 100:
-                                mimetype = _get_file_mimetype(media_content[:100])
-                            else:
-                                mimetype = _get_file_mimetype(media_content)
-                            # print(t_mime_type, mimetype)
-                            m_type, m_subtype = mimetype.split('/')
-                            if m_type == 'application' or m_type == 'text':
-                                if m_subtype in DOWNLOAD_MIMETYPES[m_type]:
-                                    obj_media_meta = dict(obj_json)
-                                    obj_media_meta['meta']['type'] = 'text'
+                            if tm_subtype == 'pdf':
+                                print('pdf')
+                                obj_media_meta = dict(obj_json)
+                                obj_media_meta['meta']['type'] = 'pdf'
+                                data_sha256 = sha256(media_content).hexdigest()
+                                name = uuid4()
+                                pdf_file = f'/tmp/{name}.pdf'
+                                with open(pdf_file, 'wb') as f:
+                                    f.write(media_content)
+                                file_metadata = extract_file_metadata(pdf_file)
+                                if file_metadata:
+                                    obj_media_meta['meta']['file_metadata'] = file_metadata
+                                media_content = convert_pdf_to_pdfa(media_content)
 
-                                    if self.ails:
-                                        self.send_to_ail(media_content, obj_media_meta['meta'])
-                                    # print(json.dumps(obj_media_meta, indent=4, sort_keys=True))
+                                if self.ails:
+                                    self.send_to_ail(media_content, obj_media_meta['meta'], data_sha256=data_sha256)
+
+                            else:
+                                # Check incorrect File Mimetype
+                                if t_mime_type == 'text/plain' and len(media_content) > 100:
+                                    mimetype = _get_file_mimetype(media_content[:100])
+                                else:
+                                    mimetype = _get_file_mimetype(media_content)
+                                # print(t_mime_type, mimetype)
+                                m_type, m_subtype = mimetype.split('/')
+                                if m_type == 'application' or m_type == 'text':
+                                    if m_subtype in DOWNLOAD_MIMETYPES[m_type]:
+                                        obj_media_meta = dict(obj_json)
+                                        obj_media_meta['meta']['type'] = 'text'
+
+                                        if self.ails:
+                                            self.send_to_ail(media_content, obj_media_meta['meta'])
+                                        # print(json.dumps(obj_media_meta, indent=4, sort_keys=True))
 
                 elif tm_type == 'image':
                     media_content = await self._download_media(message)
@@ -1305,6 +1406,7 @@ class TGFeeder:
                 print()
                 print(mess['data'])
                 print()
+                #print(json.dumps(mess['meta']))
                 self.send_to_ail(mess['data'], mess['meta'])
 
         # print(mess)
