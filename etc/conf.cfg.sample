@@ -15,3 +15,5 @@ api_id = <api_id>
 api_hash = <api_hash>
 session_name = session_file
 extract_mentions = False
+# size in bytes
+max_size_pdf = 20000000

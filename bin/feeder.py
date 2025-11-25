@@ -88,6 +88,12 @@ try:
         print('[TELEGRAM] session_name \n')
         print('[TELEGRAM] extract_mentions \n')
         sys.exit(0)
+    try:
+        max_size_pdf = config.get('TELEGRAM', 'max_size_pdf')
+    except Exception as e:
+        max_size_pdf = 20000000
+
+
     # /End Check Telegram configuration
 
 except FileNotFoundError:
@@ -163,6 +169,7 @@ if __name__ == '__main__':
 
     # Start client
     tg = TGFeeder(int(telegram_api_id), telegram_api_hash, telegram_session_name, ail_clients=AIL, extract_mentions=extract_mentions)
+    tg.set_max_size(pdf=max_size_pdf)
     # Connect client
     tg.connect()
 

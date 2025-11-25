@@ -70,38 +70,56 @@ def extract_file_metadata(file):
     process = subprocess.run(['exiftool', file], stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
     if process.returncode == 0:
-        exif = {}
+        exif = {}                   # 'File Size'
+        field_to_filter = {'ExifTool Version Number', 'File Name', 'Directory', 'File Modification Date/Time',
+                           'File Access Date/Time', 'File Inode Change Date/Time', 'File Permissions', 'File Type',
+                           'File Type Extension', 'MIME Type', 'Linearized', 'Tagged PDF', 'Warning'}
         for line in process.stdout.decode().split('\n'):
             if line:
                 name, value = line.split(':', 1)
-                exif[name.strip()] = value.strip()
+                field = name.strip()
+                value = value.strip()
+                if field not in field_to_filter and value:
+                    exif[name.strip()] = value.strip()
+        print(exif)
         return exif
     else:
+        print('exiftool:')
         print(process.stderr.decode())
 
 def delete_file_metadata(file):
     process = subprocess.run(['exiftool', '-overwrite_original', '-all=', file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if process.returncode == 0:
-        print(process.stdout.decode())
+        process = subprocess.run(['qpdf', '--warning-exit-0', '--linearize', '--replace-input', file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if process.returncode == 0:
+            warning = process.stderr.decode()
+            if warning:
+                print('qpdf:')
+                print(warning)
+                os.remove(f'{file}.~qpdf-orig')
+            return True
+        else:
+            print('qpdf:')
+            print(process.stderr.decode())
+            os.remove(f'{file}.~qpdf-temp#')
+            return False
     else:
-        print(process.stderr.decode())
-    process = subprocess.run(['qpdf', '--linearize', '--replace-input', file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if process.returncode == 0:
+        print('exiftool:')
         print(process.stdout.decode())
-    else:
         print(process.stderr.decode())
+        return False
 
 
-def convert_pdf_to_pdfa(content):
-    name = uuid4()
-    pdf_file = f'/tmp/{name}.pdf'
-    print(pdf_file)
-    with open(pdf_file, 'wb') as f:
-        f.write(content)
-
-    file_metadata = extract_file_metadata(pdf_file)
+def convert_pdf_to_pdfa(pdf_file, name):
+    # name = uuid4()
+    # pdf_file = f'/tmp/{name}.pdf'
+    # print(pdf_file)
+    # with open(pdf_file, 'wb') as f:
+    #     f.write(content)
+    # file_metadata = extract_file_metadata(pdf_file)
     delete_file_metadata(pdf_file)
 
+    gs1_out = f'/tmp/conv_{name}'
     process = subprocess.run(['gs', '-dQUIET', '-sstdout=/dev/null',
                               '-dBATCH', '-dNOPAUSE', '-dNOOUTERSAVE',
                               '-dCompatibilityLevel=1.4',
@@ -111,32 +129,40 @@ def convert_pdf_to_pdfa(content):
                               '-dDownsampleMonoImages=false', '-dDownsampleGrayImages=false', '-dDownsampleColorImages=false',
                               '-dAutoFilterColorImages=false', '-dAutoFilterGrayImages=false',
                               '-sDEVICE=pdfwrite',
-                              f'-sOutputFile=/tmp/conv_{name}', pdf_file
+                              f'-sOutputFile={gs1_out}', pdf_file
                               ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if process.returncode == 0:
-        print(process.stdout.decode())
+        process = subprocess.run(['gs', '-dQUIET', '-sstdout=/dev/null',
+                                  '-dPDFA=2', '-dBATCH', '-dNOPAUSE', '-dNOOUTERSAVE',
+                                  '-dCompatibilityLevel=1.4', '-dPDFACompatibilityPolicy=1',
+                                  '-sColorConversionStrategy=UseDeviceIndependentColor',
+                                  '-sDEVICE=pdfwrite',
+                                  f'-sOutputFile=/tmp/{name}_pdfa.pdf', gs1_out, 'PDFA_def.ps',
+                                  ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if process.returncode == 0:
+            with open(f'/tmp/{name}_pdfa.pdf', 'rb') as f:
+                content = f.read()
+            # cleanup
+            os.remove(pdf_file)
+            os.remove(gs1_out)
+            os.remove(f'/tmp/{name}_pdfa.pdf')
+            return content
+        else:
+            print('ghostscript 2:')
+            print(process.stdout.decode())
+            print(process.stderr.decode())
+            # cleanup
+            os.remove(pdf_file)
+            os.remove(gs1_out)
+            os.remove(f'/tmp/{name}_pdfa.pdf')
+
     else:
-        print(process.stderr.decode())
-
-    process = subprocess.run(['gs', '-dQUIET', '-sstdout=/dev/null',
-                              '-dPDFA=2', '-dBATCH', '-dNOPAUSE', '-dNOOUTERSAVE',
-                              '-dCompatibilityLevel=1.4', '-dPDFACompatibilityPolicy=1',
-                              '-sColorConversionStrategy=UseDeviceIndependentColor',
-                              '-sDEVICE=pdfwrite',
-                              f'-sOutputFile=/tmp/{name}_pdfa.pdf', f'/tmp/conv_{name}', 'PDFA_def.ps',
-                              ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if process.returncode == 0:
+        print('ghostscript 1:')
         print(process.stdout.decode())
-        with open(f'/tmp/{name}_pdfa.pdf', 'rb') as f:
-            content = f.read()
-
+        print(process.stderr.decode())
         # cleanup
         os.remove(pdf_file)
-        os.remove(f'/tmp/conv_{name}')
-        os.remove(f'/tmp/{name}_pdfa.pdf')
-        return content
-    else:
-        print(process.stderr.decode())
+        os.remove(gs1_out)
 
 
 def is_valid_username(username):
@@ -259,6 +285,9 @@ class TGFeeder:
         self.users = {}  # TODO ADD ID USER IF DOWNLOADED IMAGE
         self.invalid_id = set()
         # TODO END CLEANUP
+
+    def set_max_size(self, pdf=20000000):
+        self.max_size_pdf = pdf
 
     def send_to_ail(self, data, meta, data_sha256=None):
         for ail in self.ails:
@@ -1123,15 +1152,16 @@ class TGFeeder:
                 tm_type = None
                 tm_subtype = None
             # TODO verify real mimetype -> none mimetype
-            if message.file.size < 50000000:  # bytes   # TODO UP TO 50 MB ???
+            if message.file.size < 10000000 or tm_subtype == 'pdf':  # bytes
                 if tm_type == 'application' or tm_type == 'text':
                     if tm_subtype in DOWNLOAD_MIMETYPES[tm_type]:
-                        # TODO LIMIT PDF SIZE
+                        if tm_subtype == 'pdf':
+                            if 1000 > message.file.size or message.file.size > self.max_size_pdf:  # bytes
+                                return None
                         media_content = await self._download_media(message)
                         # print(media_content)
                         if media_content:
                             if tm_subtype == 'pdf':
-                                print('pdf')
                                 obj_media_meta = dict(obj_json)
                                 obj_media_meta['meta']['type'] = 'pdf'
                                 data_sha256 = sha256(media_content).hexdigest()
@@ -1142,9 +1172,9 @@ class TGFeeder:
                                 file_metadata = extract_file_metadata(pdf_file)
                                 if file_metadata:
                                     obj_media_meta['meta']['file_metadata'] = file_metadata
-                                media_content = convert_pdf_to_pdfa(media_content)
+                                media_content = convert_pdf_to_pdfa(pdf_file, name)
 
-                                if self.ails:
+                                if self.ails and media_content:
                                     self.send_to_ail(media_content, obj_media_meta['meta'], data_sha256=data_sha256)
 
                             else:
