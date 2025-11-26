@@ -100,8 +100,8 @@ def delete_file_metadata(file):
             return True
         else:
             print('qpdf:')
-            print(process.stderr.decode())
-            os.remove(f'{file}.~qpdf-temp#')
+            if os.path.exists(f'{file}.~qpdf-temp#'):
+                os.remove(f'{file}.~qpdf-temp#')
             return False
     else:
         print('exiftool:')
