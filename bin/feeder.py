@@ -89,7 +89,7 @@ try:
         print('[TELEGRAM] extract_mentions \n')
         sys.exit(0)
     try:
-        max_size_pdf = config.get('TELEGRAM', 'max_size_pdf')
+        max_size_pdf = config.getint('TELEGRAM', 'max_size_pdf')
     except Exception as e:
         max_size_pdf = 20000000
 
