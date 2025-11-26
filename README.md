@@ -10,7 +10,7 @@ External telegram feeder for AIL framework (with an automated user account)
 ## Install
 
 ```bash
-sudo apt-get install cryptg libmagic1 ghostscript exiftool qpdf
+sudo apt-get install libmagic1 ghostscript exiftool qpdf
 ```
 
 - Install python3 dependencies:
