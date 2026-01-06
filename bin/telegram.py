@@ -23,7 +23,8 @@ from telethon import TelegramClient, events
 # from telethon import helpers
 from telethon.utils import parse_username
 
-from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelRequest, GetForumTopicsRequest, GetChannelRecommendationsRequest
+from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelRequest, GetChannelRecommendationsRequest
+from telethon.tl.functions.messages import GetForumTopicsRequest
 
 from telethon.tl.types import Channel, User, ChannelParticipantsAdmins, PeerUser, PeerChat, PeerChannel, ForumTopicDeleted
 from telethon.tl.types import InputPeerChat, InputPeerChannel, InputPeerUser
@@ -1155,8 +1156,10 @@ class TGFeeder:
             if message.file.size < 10000000 or tm_subtype == 'pdf':  # bytes
                 if tm_type == 'application' or tm_type == 'text':
                     if tm_subtype in DOWNLOAD_MIMETYPES[tm_type]:
+                        # print(message.file.size)
                         if tm_subtype == 'pdf':
                             if 1000 > message.file.size or message.file.size > self.max_size_pdf:  # bytes
+                                # TODO SET MESSAGE file-size
                                 return None
                         media_content = await self._download_media(message)
                         # print(media_content)
