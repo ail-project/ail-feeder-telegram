@@ -49,13 +49,20 @@ try:
             else:
                 break
 
+        qpdf_cmd = config.get('EXECUTABLES', 'qpdf_cmd')
+        ghostscript_cmd = config.get('EXECUTABLES', 'ghostscript_cmd')
+
     except Exception as e:
-        print(e)
-        print('[ERROR] Check ../etc/conf.cfg to ensure the following variables have been set:\n')
-        print('[AIL] feeder_uuid \n')
-        print('[AIL] url \n')
-        print('[AIL] apikey \n')
-        sys.exit(0)
+        if str(e) == "No section: 'EXECUTABLES'":
+            qpdf_cmd = 'qpdf'
+            ghostscript_cmd = 'gs'
+        else:
+            print(e)
+            print('[ERROR] Check ../etc/conf.cfg to ensure the following variables have been set:')
+            print('    [AIL] feeder_uuid')
+            print('    [AIL] url')
+            print('    [AIL] apikey')
+            sys.exit(0)
 
     if ail_feeder:
         for url in ail_conf:
@@ -82,11 +89,11 @@ try:
 
         extract_mentions = config.getboolean('TELEGRAM', 'extract_mentions')
     except Exception as e:
-        print('[ERROR] Check ../etc/conf.cfg to ensure the following variables have been set:\n')
-        print('[TELEGRAM] api_id \n')
-        print('[TELEGRAM] api_hash \n')
-        print('[TELEGRAM] session_name \n')
-        print('[TELEGRAM] extract_mentions \n')
+        print('[ERROR] Check ../etc/conf.cfg to ensure the following variables have been set:')
+        print('    [TELEGRAM] api_id')
+        print('    [TELEGRAM] api_hash')
+        print('    [TELEGRAM] session_name')
+        print('    [TELEGRAM] extract_mentions')
         sys.exit(0)
     try:
         max_size_pdf = config.getint('TELEGRAM', 'max_size_pdf')
@@ -168,7 +175,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Start client
-    tg = TGFeeder(int(telegram_api_id), telegram_api_hash, telegram_session_name, ail_clients=AIL, extract_mentions=extract_mentions)
+    tg = TGFeeder(int(telegram_api_id), telegram_api_hash, telegram_session_name, ail_clients=AIL,
+                  extract_mentions=extract_mentions, qpdf_cmd=qpdf_cmd, ghostscript_cmd=ghostscript_cmd)
     tg.set_max_size(pdf=max_size_pdf)
     # Connect client
     tg.connect()

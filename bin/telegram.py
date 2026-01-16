@@ -88,10 +88,10 @@ def extract_file_metadata(file):
         print('exiftool:')
         print(process.stderr.decode())
 
-def delete_file_metadata(file):
+def delete_file_metadata(file, qpdf_cmd='qpdf'):
     process = subprocess.run(['exiftool', '-overwrite_original', '-all=', file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if process.returncode == 0:
-        process = subprocess.run(['qpdf', '--warning-exit-0', '--linearize', '--replace-input', file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = subprocess.run([qpdf_cmd, '--warning-exit-0', '--linearize', '--replace-input', file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if process.returncode == 0:
             warning = process.stderr.decode()
             if warning:
@@ -111,17 +111,17 @@ def delete_file_metadata(file):
         return False
 
 
-def convert_pdf_to_pdfa(pdf_file, name):
+def convert_pdf_to_pdfa(pdf_file, name, qpdf_cmd='qpdf', ghostscript_cmd='gs'):
     # name = uuid4()
     # pdf_file = f'/tmp/{name}.pdf'
     # print(pdf_file)
     # with open(pdf_file, 'wb') as f:
     #     f.write(content)
     # file_metadata = extract_file_metadata(pdf_file)
-    delete_file_metadata(pdf_file)
+    delete_file_metadata(pdf_file, qpdf_cmd=qpdf_cmd)
 
     gs1_out = f'/tmp/conv_{name}'
-    process = subprocess.run(['gs', '-dQUIET', '-sstdout=/dev/null',
+    process = subprocess.run([ghostscript_cmd, '-dQUIET', '-sstdout=/dev/null',
                               '-dBATCH', '-dNOPAUSE', '-dNOOUTERSAVE',
                               '-dCompatibilityLevel=1.4',
                               '-dEmbedAllFonts=true', '-dSubsetFonts=true',
@@ -133,7 +133,7 @@ def convert_pdf_to_pdfa(pdf_file, name):
                               f'-sOutputFile={gs1_out}', pdf_file
                               ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if process.returncode == 0:
-        process = subprocess.run(['gs', '-dQUIET', '-sstdout=/dev/null',
+        process = subprocess.run([ghostscript_cmd, '-dQUIET', '-sstdout=/dev/null',
                                   '-dPDFA=2', '-dBATCH', '-dNOPAUSE', '-dNOOUTERSAVE',
                                   '-dCompatibilityLevel=1.4', '-dPDFACompatibilityPolicy=1',
                                   '-sColorConversionStrategy=UseDeviceIndependentColor',
@@ -257,7 +257,7 @@ class TGFeeder:
     # dialog vs chats ???
 
     # ail_url ail_key ail_verifycert ail_feeder + disabled option
-    def __init__(self, tg_api_id, tg_api_hash, session_name, ail_clients=None, extract_mentions=False): # TODO create downloads dir
+    def __init__(self, tg_api_id, tg_api_hash, session_name, ail_clients=None, extract_mentions=False, qpdf_cmd='qpdf', ghostscript_cmd='gs'):  # TODO create downloads dir
         self.logger = logging.getLogger()  # TODO FORMAT LOGS
 
         self.source = 'ail_feeder_telegram'
@@ -276,6 +276,10 @@ class TGFeeder:
             self.ails = ail_clients
         else:
             self.ails = None
+
+        # executables cmd
+        self.qpdf_cmd = qpdf_cmd
+        self.ghostscript_cmd = ghostscript_cmd
 
         # self.lt = LibreTranslateAPI("http://localhost:5000")
 
@@ -1175,7 +1179,7 @@ class TGFeeder:
                                 file_metadata = extract_file_metadata(pdf_file)
                                 if file_metadata:
                                     obj_media_meta['meta']['file_metadata'] = file_metadata
-                                media_content = convert_pdf_to_pdfa(pdf_file, name)
+                                media_content = convert_pdf_to_pdfa(pdf_file, name, qpdf_cmd=self.qpdf_cmd, ghostscript_cmd=self.ghostscript_cmd)
 
                                 if self.ails and media_content:
                                     self.send_to_ail(media_content, obj_media_meta['meta'], data_sha256=data_sha256)

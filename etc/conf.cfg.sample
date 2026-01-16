@@ -17,3 +17,8 @@ session_name = session_file
 extract_mentions = False
 # size in bytes
 max_size_pdf = 20000000
+
+[EXECUTABLES]
+qpdf_cmd = qpdf
+ghostscript_cmd = gs
+
