@@ -6,76 +6,92 @@ import configparser
 import json
 import sys
 import os
-import time
+# import time
 
 from telegram import TGFeeder
 from pyail import PyAIL
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
-pathConf = os.path.join(dir_path, '../etc/conf.cfg')
+default_config_file = os.path.join(dir_path, '../etc/conf.cfg')
 
 # TODO logs
 
-# Check the configuration and do some preliminary structure checks
-try:
-    config = configparser.ConfigParser()
-    config.read(pathConf)
+def load_config_file(config_path):
+    try:
+        config = configparser.ConfigParser()
+        config.read(config_path)
+    except FileNotFoundError:
+        print(f'[ERROR] {config_path} was not found. Copy conf.cfg.sample to conf.cfg and update its contents.')
+        sys.exit(0)
+    except Exception as e:
+        print(f'Error opening config file: {e}')
+        sys.exit(0)
 
     # Check AIL configuration, set variables and do the connection test to AIL API
     if 'AIL' not in config:
         print('[ERROR] The [AIL] section was not defined within conf.cfg. Ensure conf.cfg contents are correct.')
         sys.exit(0)
 
+    conf = {}
+    ail_clients = []
     ail_conf = {}
-    AIL = []
 
     try:
         # Set variables required for the Telegram Feeder
-        feeder_uuid = config.get('AIL', 'feeder_uuid')
+        conf['feeder_uuid'] = config.get('AIL', 'feeder_uuid')
         ail_feeder = config.getboolean('AIL', 'ail_feeder')
 
         if config.has_option('AIL', 'url'):
             ail_url = config.get('AIL', 'url')
             ail_key = config.get('AIL', 'apikey')
             ail_verifycert = config.getboolean('AIL', 'verifycert')
-            ail_conf[ail_url] = {'api': ail_key, 'verifycert': ail_verifycert}
+            ail_conf[ail_url] = {'key': ail_key, 'verifycert': ail_verifycert}
 
         for i in range(2, 11):
             if config.has_option('AIL', f'url{i}'):
                 ail_url = config.get('AIL', f'url{i}')
                 ail_key = config.get('AIL', f'apikey{i}')
                 ail_verifycert = config.getboolean('AIL', f'verifycert{i}')
-                ail_conf[ail_url] = {'api': ail_key, 'verifycert': ail_verifycert}
+                ail_conf[ail_url] = {'key': ail_key, 'verifycert': ail_verifycert}
             else:
                 break
-
-        qpdf_cmd = config.get('EXECUTABLES', 'qpdf_cmd')
-        ghostscript_cmd = config.get('EXECUTABLES', 'ghostscript_cmd')
-
     except Exception as e:
-        if str(e) == "No section: 'EXECUTABLES'":
-            qpdf_cmd = 'qpdf'
-            ghostscript_cmd = 'gs'
-        else:
-            print(e)
-            print('[ERROR] Check ../etc/conf.cfg to ensure the following variables have been set:')
-            print('    [AIL] feeder_uuid')
-            print('    [AIL] url')
-            print('    [AIL] apikey')
-            sys.exit(0)
+        print(e)
+        print('[ERROR] Check ../etc/conf.cfg to ensure the following variables have been set:')
+        print('    [AIL] feeder_uuid')
+        print('    [AIL] url')
+        print('    [AIL] apikey')
+        sys.exit(0)
 
     if ail_feeder:
         for url in ail_conf:
             try:
-                ail = PyAIL(ail_url, ail_key, ssl=ail_verifycert)
+                ail = PyAIL(url, ail_conf[url]['key'], ssl=ail_conf[url]['verifycert'])
             except Exception as e:
+                print(e)
                 print('[ERROR] Unable to connect to AIL Framework API. Please check [AIL] url, apikey and verifycert in ../etc/conf.cfg.\n')
                 sys.exit(0)
-            AIL.append(ail)
+            ail_clients.append(ail)
+        conf['ail'] = ail_clients
     else:
         # print('[INFO] AIL Feeder has not been enabled in [AIL] ail_feeder. Feeder script will not send output to AIL.\n')
-        ail = None
-    # /End Check AIL configuration
+        conf['ail'] = None
+
+    # EXECUTABLES CMD PATH
+    try:
+        conf['qpdf_cmd'] = config.get('EXECUTABLES', 'qpdf_cmd')
+        conf['ghostscript_cmd'] = config.get('EXECUTABLES', 'ghostscript_cmd')
+
+    except Exception as e:
+        if str(e) == "No section: 'EXECUTABLES'":
+            conf['qpdf_cmd'] = 'qpdf'
+            conf['ghostscript_cmd'] = 'gs'
+        else:
+            print(e)
+            print('[ERROR] Check ../etc/conf.cfg to ensure executables path are configured')
+            print('    [EXECUTABLES] qpdf_cmd')
+            print('    [EXECUTABLES] ghostscript_cmd')
+            sys.exit(0)
 
     # Check Telegram configuration, set variables and do the connection test to Telegram API
     if 'TELEGRAM' not in config:
@@ -83,12 +99,14 @@ try:
         sys.exit(0)
 
     try:
-        telegram_api_id = config.get('TELEGRAM', 'api_id')
-        telegram_api_hash = config.get('TELEGRAM', 'api_hash')
-        telegram_session_name = config.get('TELEGRAM', 'session_name')
+        conf['telegram'] = {}
+        conf['telegram']['id'] = int(config.get('TELEGRAM', 'api_id'))
+        conf['telegram']['hash'] = config.get('TELEGRAM', 'api_hash')
+        conf['telegram']['session_name'] = os.path.basename(config.get('TELEGRAM', 'session_name'))
 
-        extract_mentions = config.getboolean('TELEGRAM', 'extract_mentions')
+        conf['extract_mentions'] = config.getboolean('TELEGRAM', 'extract_mentions')
     except Exception as e:
+        print(e)
         print('[ERROR] Check ../etc/conf.cfg to ensure the following variables have been set:')
         print('    [TELEGRAM] api_id')
         print('    [TELEGRAM] api_hash')
@@ -96,20 +114,12 @@ try:
         print('    [TELEGRAM] extract_mentions')
         sys.exit(0)
     try:
-        max_size_pdf = config.getint('TELEGRAM', 'max_size_pdf')
-    except Exception as e:
-        max_size_pdf = 20000000
+        conf['max_size_pdf'] = config.getint('TELEGRAM', 'max_size_pdf')
+    except Exception:
+        conf['max_size_pdf'] = 20000000
 
+    return conf
 
-    # /End Check Telegram configuration
-
-except FileNotFoundError:
-    print('[ERROR] ../etc/conf.cfg was not found. Copy conf.cfg.sample to conf.cfg and update its contents.')
-    sys.exit(0)
-
-###############################################################
-###############################################################
-###############################################################
 
 def _create_messages_subparser(subparser):
     subparser.add_argument('--replies', action='store_true', help='Get replies')
@@ -123,61 +133,70 @@ def _json_print(mess):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Telegram feeder')
+
+    # parent
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    parent_parser.add_argument('-c', '--config', type=str, help='Config File', default=default_config_file)
+
+    parser = argparse.ArgumentParser(description='Telegram feeder', parents=[parent_parser])
+    # parser.add_argument('-c', '--config', type=str, help='Config File', default=default_config_file)
 
     subparsers = parser.add_subparsers(dest='command')
 
-    list_chats_parser = subparsers.add_parser('chats', help='List all joined chats')
+    list_chats_parser = subparsers.add_parser('chats', help='List all joined chats', parents=[parent_parser])
 
-    join_chat_parser = subparsers.add_parser('join', help='Join a chat by its id, username or with a hash invite')
+    join_chat_parser = subparsers.add_parser('join', help='Join a chat by its id, username or with a hash invite', parents=[parent_parser])
     join_chat_parser.add_argument('-n', '--name', type=str, help='Id, hash or username of the chat to join')
     join_chat_parser.add_argument('-i', '--invite', type=str, help='Invite hash of the chat to join')
 
-    get_chat_users_parser = subparsers.add_parser('leave', help='Leave a chat')
+    get_chat_users_parser = subparsers.add_parser('leave', help='Leave a chat', parents=[parent_parser])
     get_chat_users_parser.add_argument('chat_id', help='ID, hash or username of the chat to leave')
 
-    get_chat_users_parser = subparsers.add_parser('check', help='Check a chat/invite hash without joining')
+    get_chat_users_parser = subparsers.add_parser('check', help='Check a chat/invite hash without joining', parents=[parent_parser])
     get_chat_users_parser.add_argument('invite', help='invite hash to check')
 
-    messages_parser = subparsers.add_parser('messages', help='Get all messages from a chat')
+    messages_parser = subparsers.add_parser('messages', help='Get all messages from a chat', parents=[parent_parser])
     messages_parser.add_argument('chat_id', nargs='+', help='ID of the chat.')  # TODO NB messages
     messages_parser.add_argument('--min_id', type=int, help='minimal ID of chat messages.')
     messages_parser.add_argument('--max_id', type=int, help='maximum ID of chat messages.')
     _create_messages_subparser(messages_parser)
 
-    message_parser = subparsers.add_parser('message', help='Get a message from a chat')
+    message_parser = subparsers.add_parser('message', help='Get a message from a chat', parents=[parent_parser])
     message_parser.add_argument('chat_id', help='ID of the chat.')
     message_parser.add_argument('mess_id', help='ID of the message.')
     _create_messages_subparser(message_parser)
 
-    monitor_chats_parser = subparsers.add_parser('monitor', help='Monitor chats')
+    monitor_chats_parser = subparsers.add_parser('monitor', help='Monitor chats', parents=[parent_parser])
     _create_messages_subparser(monitor_chats_parser)
 
-    get_unread_parser = subparsers.add_parser('unread', help='Get all unread messages from all chats')
+    get_unread_parser = subparsers.add_parser('unread', help='Get all unread messages from all chats', parents=[parent_parser])
     _create_messages_subparser(get_unread_parser)
 
     # monitor_chats_parser.add_argument('chat_ids', nargs='+', help='IDs of chats to monitor')
 
     # return meta if no flags
-    get_chat_users_parser = subparsers.add_parser('chat', help='Get a chat metadata, list of users, ...')
+    get_chat_users_parser = subparsers.add_parser('chat', help='Get a chat metadata, list of users, ...', parents=[parent_parser])
     get_chat_users_parser.add_argument('chat_id', help='ID, hash or username of the chat')
     get_chat_users_parser.add_argument('--users', action='store_true', help='Get a list of all the users of a chat')
     get_chat_users_parser.add_argument('--admins', action='store_true', help='Get a list of all the admin users of a chat')
     get_chat_users_parser.add_argument('--similar', action='store_true', help='Get a list of similar/recommended chats')
     # join ? leave ? shortcut
 
-    get_metas_parser = subparsers.add_parser('entity', help='Get chat or user metadata')
+    get_metas_parser = subparsers.add_parser('entity', help='Get chat or user metadata', parents=[parent_parser])
     get_metas_parser.add_argument('entity_name', help='ID, hash or username of the chat/user')
 
-    search_parser = subparsers.add_parser('search', help='Search for chats/users')
+    search_parser = subparsers.add_parser('search', help='Search for chats/users', parents=[parent_parser])
     search_parser.add_argument('to_search', help='String to search')
 
     args = parser.parse_args()
 
+    # load config file
+    cf = load_config_file(args.config)
+
     # Start client
-    tg = TGFeeder(int(telegram_api_id), telegram_api_hash, telegram_session_name, ail_clients=AIL,
-                  extract_mentions=extract_mentions, qpdf_cmd=qpdf_cmd, ghostscript_cmd=ghostscript_cmd)
-    tg.set_max_size(pdf=max_size_pdf)
+    tg = TGFeeder(cf['telegram']['id'], cf['telegram']['hash'], cf['telegram']['session_name'], ail_clients=cf['ail'],
+                  extract_mentions=cf['extract_mentions'], qpdf_cmd=cf['qpdf_cmd'], ghostscript_cmd=cf['ghostscript_cmd'])
+    tg.set_max_size(pdf=cf['max_size_pdf'])
     # Connect client
     tg.connect()
 
@@ -285,7 +304,7 @@ if __name__ == '__main__':
             mess_id = args.mess_id
             try:
                 mess_id = int(mess_id)
-            except ValueError as e:
+            except ValueError:
                 print('Invalid message ID')
                 sys.exit(0)
             if mess_id <= 0:
