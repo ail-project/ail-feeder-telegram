@@ -136,10 +136,9 @@ if __name__ == '__main__':
 
     # parent
     parent_parser = argparse.ArgumentParser(add_help=False)
-    parent_parser.add_argument('-c', '--config', type=str, help='Config File', default=default_config_file)
+    parent_parser.add_argument('-c', '--config', type=str, help='Config File', default=argparse.SUPPRESS)
 
     parser = argparse.ArgumentParser(description='Telegram feeder', parents=[parent_parser])
-    # parser.add_argument('-c', '--config', type=str, help='Config File', default=default_config_file)
 
     subparsers = parser.add_subparsers(dest='command')
 
@@ -191,7 +190,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # load config file
-    cf = load_config_file(args.config)
+    if not hasattr(args, 'config'):
+        cf = load_config_file(default_config_file)
+    else:
+        cf = load_config_file(args.config)
 
     # Start client
     tg = TGFeeder(cf['telegram']['id'], cf['telegram']['hash'], cf['telegram']['session_name'], ail_clients=cf['ail'],
