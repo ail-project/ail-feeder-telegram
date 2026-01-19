@@ -376,8 +376,6 @@ class TGFeeder:
             if chat_full['discussion']['channel'] == chat_full['id']:
                 meta_discussion = await self.join_chat(chat=chat_full['discussion']['chat'], discussion=False)
                 return meta_discussion
-        else:
-            print(chat_full)
 
     async def join_chat(self, chat=None, invite=None, discussion=True):
         # join a public chat/channel
