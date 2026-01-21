@@ -663,7 +663,7 @@ class TGFeeder:
         except (TypeError, ValueError):
             pass
         # chat = await self.client.get_entity(chat)
-        topics = await self.client(GetForumTopicsRequest(channel=chat, offset_date=None, offset_id=0, offset_topic=0, limit=0))
+        topics = await self.client(GetForumTopicsRequest(chat, offset_date=None, offset_id=0, offset_topic=0, limit=0))
         chat_topic = {}
         for topic in topics.topics:
             chat_topic[topic.id] = self._unpack_forum_topic(topic)
