@@ -1002,12 +1002,40 @@ class TGFeeder:
             return self.users[sender.id]
 
     def unpack_message_entities(self, message):
-        text = ''
-        for ent, txt in message.get_entities_text():
+        """Expand hidden links in place using Telegram's UTF-16 entity offsets."""
+        text = message.message or ''
+        if not message.entities:
+            return text
+
+        # Map UTF-16 boundaries to Python indices, including emoji surrogate pairs.
+        positions = {0: 0}
+        offset = 0
+        for index, character in enumerate(text, 1):
+            offset += 2 if ord(character) > 0xffff else 1
+            positions[offset] = index
+
+        entities = [ent for ent in message.entities
+                    if isinstance(ent, (MessageEntityTextUrl, MessageEntityMentionName))]
+        previous_start = len(text)
+        fallback_urls = []
+        # Work backwards so inserted destinations do not shift subsequent offsets.
+        for ent in sorted(entities, key=lambda ent: ent.offset, reverse=True):
             if isinstance(ent, MessageEntityTextUrl):
-                text += f'\n[{txt}]({ent.url})'
-            elif isinstance(ent, MessageEntityMentionName):
-                text += f'\n[{txt}](tg://user?id={ent.user_id})'
+                url = ent.url
+            else:
+                url = f'tg://user?id={ent.user_id}'
+            start = positions.get(ent.offset)
+            end = positions.get(ent.offset + ent.length)
+            if start is None or end is None or end <= start or end > previous_start:
+                self.logger.warning('Invalid or overlapping entity span in message %s: offset=%s, length=%s',
+                                    message.id, ent.offset, ent.length)
+                fallback_urls.append(url)
+                continue
+            text = text[:start] + f'[{text[start:end]}]({url})' + text[end:]
+            previous_start = start
+
+        if fallback_urls:
+            text += '\n' + '\n'.join(reversed(fallback_urls))
         return text
 
     async def get_message_mentions(self, message, chat_id):
@@ -1242,10 +1270,7 @@ class TGFeeder:
         # post
         # pinned
         mess = self._get_default_dict()
-        if message.message:
-            mess['data'] = message.message
-        else:  # media if '' or MessageService if None
-            mess['data'] = ''
+        mess['data'] = self.unpack_message_entities(message)
         meta = mess['meta']
         meta['id'] = message.id
         meta['date'] = unpack_datetime(message.date)
@@ -1356,12 +1381,6 @@ class TGFeeder:
                 meta['sender']['icon'] = self.chats[message_chat_id]['icon']
             if 'info' in self.chats[message_chat_id]:
                 meta['sender']['info'] = self.chats[message_chat_id]['info']
-
-        # Preserve destinations hidden behind link labels and named mentions.
-        if message.entities:
-            mess_entities = self.unpack_message_entities(message)
-            if mess_entities:
-                mess['data'] += mess_entities
 
         ## FORWARD ##
 
