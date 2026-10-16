@@ -257,7 +257,7 @@ class TGFeeder:
     # dialog vs chats ???
 
     # ail_url ail_key ail_verifycert ail_feeder + disabled option
-    def __init__(self, tg_api_id, tg_api_hash, session_name, ail_clients=None, extract_mentions=False, qpdf_cmd='qpdf', ghostscript_cmd='gs'):  # TODO create downloads dir
+    def __init__(self, tg_api_id, tg_api_hash, session_name, ail_clients=None, extract_mentions=False, qpdf_cmd='qpdf', ghostscript_cmd='gs', force_stdout=False, output_stream=None):  # TODO create downloads dir
         self.logger = logging.getLogger()  # TODO FORMAT LOGS
 
         self.source = 'ail_feeder_telegram'
@@ -272,10 +272,12 @@ class TGFeeder:
         self.client = self.get_client()
         self.loop = self.client.loop
 
-        if ail_clients:
+        if ail_clients and not force_stdout:
             self.ails = ail_clients
         else:
             self.ails = None
+        self.force_stdout = force_stdout
+        self.output_stream = output_stream if output_stream is not None else sys.stdout
 
         # executables cmd
         self.qpdf_cmd = qpdf_cmd
@@ -1461,6 +1463,10 @@ class TGFeeder:
 
             # TODO Multiple medias ??????
             await self.get_media(mess, message, download=download, save_dir=save_dir)
+
+        if self.force_stdout:
+            mess['meta']['type'] = 'message'
+            print(json.dumps(mess, sort_keys=True), file=self.output_stream)
 
         # Downloads comments
         if message.replies and replies:

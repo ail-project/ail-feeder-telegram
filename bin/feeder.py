@@ -16,7 +16,7 @@ default_config_file = os.path.join(dir_path, '../etc/conf.cfg')
 
 # TODO logs
 
-def load_config_file(config_path):
+def load_config_file(config_path, force_stdout=False):
     try:
         config = configparser.ConfigParser()
         config.read(config_path)
@@ -39,7 +39,7 @@ def load_config_file(config_path):
     try:
         # Set variables required for the Telegram Feeder
         conf['feeder_uuid'] = config.get('AIL', 'feeder_uuid')
-        ail_feeder = config.getboolean('AIL', 'ail_feeder')
+        ail_feeder = not force_stdout and config.getboolean('AIL', 'ail_feeder')
 
         if config.has_option('AIL', 'url'):
             ail_url = config.get('AIL', 'url')
@@ -163,6 +163,8 @@ if __name__ == '__main__':
     message_parser = subparsers.add_parser('message', help='Get a message from a chat', parents=[parent_parser])
     message_parser.add_argument('chat_id', help='ID of the chat.')
     message_parser.add_argument('mess_id', help='ID of the message.')
+    message_parser.add_argument('--stdout', action='store_true',
+                                help='Print processed messages as JSON lines without sending to AIL')
     _create_messages_subparser(message_parser)
 
     monitor_chats_parser = subparsers.add_parser('monitor', help='Monitor chats', parents=[parent_parser])
@@ -189,15 +191,22 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    force_stdout = getattr(args, 'stdout', False)
+    output_stream = sys.stdout
+    if force_stdout:
+        # Keep diagnostics (including Telegram login prompts) out of the JSON output.
+        sys.stdout = sys.stderr
+
     # load config file
     if not hasattr(args, 'config'):
-        cf = load_config_file(default_config_file)
+        cf = load_config_file(default_config_file, force_stdout=force_stdout)
     else:
-        cf = load_config_file(args.config)
+        cf = load_config_file(args.config, force_stdout=force_stdout)
 
     # Start client
     tg = TGFeeder(cf['telegram']['id'], cf['telegram']['hash'], cf['telegram']['session_name'], ail_clients=cf['ail'],
-                  extract_mentions=cf['extract_mentions'], qpdf_cmd=cf['qpdf_cmd'], ghostscript_cmd=cf['ghostscript_cmd'])
+                  extract_mentions=cf['extract_mentions'], qpdf_cmd=cf['qpdf_cmd'], ghostscript_cmd=cf['ghostscript_cmd'],
+                  force_stdout=force_stdout, output_stream=output_stream)
     tg.set_max_size(pdf=cf['max_size_pdf'])
     # Connect client
     tg.connect()
@@ -336,7 +345,12 @@ if __name__ == '__main__':
             try:
                 loop.run_until_complete(tg.get_chat_messages(chat, min_id=min_id, max_id=max_id, download=download, save_dir=save_dir, replies=replies, mark_read=mark_read))
             except:
+                if force_stdout:
+                    raise
                 tg.client.disconnect()
+            finally:
+                if force_stdout:
+                    tg.client.disconnect()
 
         elif args.command == 'unread':
             if args.replies:
