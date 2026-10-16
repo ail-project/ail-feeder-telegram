@@ -1001,23 +1001,13 @@ class TGFeeder:
                 self.users[sender.id] = await self.get_user(sender)
             return self.users[sender.id]
 
-    # https://github.com/LonamiWebs/Telethon/blob/v1/telethon/extensions/markdown.py#L12
     def unpack_message_entities(self, message):
-        # text = helpers.add_surrogate(message.raw_text)
         text = ''
         for ent, txt in message.get_entities_text():
             if isinstance(ent, MessageEntityTextUrl):
-                text = text + f'\n[{txt}]({ent.url})'
+                text += f'\n[{txt}]({ent.url})'
             elif isinstance(ent, MessageEntityMentionName):
-                text = text + f'\n[{txt}](tg://user?id={ent.user_id})'
-        #         offset = ent.offset
-        #         if offset > 0:
-        #             offset = offset - 1
-        #         length = ent.length
-        #         print(ent)
-        #         print(txt.encode())
-        #         print(helpers.del_surrogate(text[offset:offset + length]))
-        # text = helpers.del_surrogate(text)
+                text += f'\n[{txt}](tg://user?id={ent.user_id})'
         return text
 
     async def get_message_mentions(self, message, chat_id):
@@ -1367,12 +1357,11 @@ class TGFeeder:
             if 'info' in self.chats[message_chat_id]:
                 meta['sender']['info'] = self.chats[message_chat_id]['info']
 
-        # if message.entities: # TODO ################# REMOVE ME #############################################################################
-        #     mess_entities = self.unpack_message_entities(message)
-        #     if mess_entities:
-        #         mess['data'] = mess['data'] + '\n' + mess_entities
-
-        #
+        # Preserve destinations hidden behind link labels and named mentions.
+        if message.entities:
+            mess_entities = self.unpack_message_entities(message)
+            if mess_entities:
+                mess['data'] += mess_entities
 
         ## FORWARD ##
 
@@ -1416,7 +1405,7 @@ class TGFeeder:
         # -FORWARD- #
 
         # MENTIONS #
-        elif message.entities and self.extract_mentions:
+        if message.entities and self.extract_mentions:
             mentions = await self.get_message_mentions(message, meta['chat']['id'])
             if mentions:
                 meta['mentions'] = mentions
